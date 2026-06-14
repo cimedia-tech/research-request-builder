@@ -1,0 +1,975 @@
+"use client";
+
+import { useState, useCallback, useMemo, useEffect } from "react";
+import "./paywall.css";
+
+/* ═══════════════════════════════════════════════════════════════
+   TYPES
+   ═══════════════════════════════════════════════════════════════ */
+
+interface ExpansionQuestion {
+  id: string;
+  question: string;
+  type: "select" | "multiselect" | "text" | "scale";
+  options?: string[];
+  purpose: string;
+  default?: string;
+}
+
+interface ExpansionData {
+  detected_division: string;
+  detected_topic: string;
+  initial_assessment: string;
+  expansion_questions: ExpansionQuestion[];
+}
+
+type Step = 1 | 2 | 3;
+
+/* ═══════════════════════════════════════════════════════════════
+   CONTOUR FIELD BACKGROUND — static topographic SVG
+   ═══════════════════════════════════════════════════════════════ */
+
+function ContourField() {
+  // Pre-rendered organic contour lines resembling topographic elevation maps
+  const paths = useMemo(() => {
+    const lines: string[] = [];
+    const seed = 42;
+    for (let i = 0; i < 28; i++) {
+      const yBase = (i / 28) * 100;
+      const amplitude = 3 + (((seed * (i + 1) * 17) % 100) / 100) * 8;
+      const freq = 0.8 + (((seed * (i + 1) * 31) % 100) / 100) * 1.2;
+      const phase = ((seed * (i + 1) * 13) % 100) / 100 * Math.PI * 2;
+      
+      let d = `M -5 ${yBase}`;
+      for (let x = 0; x <= 105; x += 2) {
+        const y = yBase + 
+          Math.sin((x * freq * 0.05) + phase) * amplitude +
+          Math.sin((x * freq * 0.03) + phase * 1.5) * (amplitude * 0.6) +
+          Math.cos((x * freq * 0.07) + phase * 0.7) * (amplitude * 0.3);
+        d += ` L ${x} ${y.toFixed(2)}`;
+      }
+      lines.push(d);
+    }
+    return lines;
+  }, []);
+
+  return (
+    <div className="contour-field" aria-hidden="true">
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {paths.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CONTOUR RING — sidebar progress SVG (6 concentric rings)
+   ═══════════════════════════════════════════════════════════════ */
+
+function ContourRing({ step, answeredCount, totalQuestions }: {
+  step: Step;
+  answeredCount: number;
+  totalQuestions: number;
+}) {
+  const cx = 90;
+  const cy = 90;
+  const rings = [
+    { r: 78, class: "ring-1" },
+    { r: 66, class: "ring-2" },
+    { r: 54, class: "ring-3" },
+    { r: 42, class: "ring-4" },
+    { r: 30, class: "ring-5" },
+    { r: 18, class: "ring-6" },
+  ];
+
+  // Calculate how many rings to activate based on progress
+  const getProgress = () => {
+    if (step === 1) return 1;
+    if (step === 2) {
+      const questionProgress = totalQuestions > 0 ? answeredCount / totalQuestions : 0;
+      return 1 + questionProgress * 4; // rings 1-5
+    }
+    return 6; // all rings for step 3
+  };
+
+  const progress = getProgress();
+
+  return (
+    <div className="contour-ring-container">
+      <svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+        {rings.map((ring, i) => {
+          const circumference = 2 * Math.PI * ring.r;
+          const ringIndex = i + 1;
+          const isCompleted = ringIndex <= Math.floor(progress);
+          const isActive = ringIndex === Math.ceil(progress) && !isCompleted;
+          const fillAmount = isCompleted 
+            ? 1 
+            : isActive 
+              ? progress - Math.floor(progress) 
+              : 0;
+          const dashOffset = circumference * (1 - fillAmount);
+
+          return (
+            <circle
+              key={i}
+              cx={cx}
+              cy={cy}
+              r={ring.r}
+              className={`contour-ring ${ring.class} ${isCompleted ? "completed" : ""} ${isActive ? "active" : ""}`}
+              strokeDasharray={circumference}
+              strokeDashoffset={dashOffset}
+              transform={`rotate(-90 ${cx} ${cy})`}
+              style={{ 
+                transition: "stroke-dashoffset 800ms cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            />
+          );
+        })}
+        {/* Center indicator */}
+        <circle cx={cx} cy={cy} r="6" fill={step === 3 ? "#2A6B6B" : "#C1694F"} opacity="0.8">
+          <animate
+            attributeName="r"
+            values="5;7;5"
+            dur="3.5s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.6;1;0.6"
+            dur="3.5s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      </svg>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEADER LOGO SVG
+   ═══════════════════════════════════════════════════════════════ */
+
+function HeaderLogo() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Terrain contour icon */}
+      <circle cx="16" cy="16" r="14" stroke="#C1694F" strokeWidth="1.2" opacity="0.4" />
+      <circle cx="16" cy="16" r="10" stroke="#C1694F" strokeWidth="1" opacity="0.6" />
+      <circle cx="16" cy="16" r="6" stroke="#C1694F" strokeWidth="0.8" opacity="0.8" />
+      <circle cx="16" cy="16" r="2.5" fill="#C1694F" />
+    </svg>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   QUESTION CARD COMPONENT
+   ═══════════════════════════════════════════════════════════════ */
+
+function QuestionCard({
+  question,
+  index,
+  answer,
+  onAnswer,
+}: {
+  question: ExpansionQuestion;
+  index: number;
+  answer: string;
+  onAnswer: (id: string, value: string) => void;
+}) {
+  const isAnswered = answer !== undefined && answer !== "";
+
+  const handleMultiSelect = (option: string) => {
+    const currentSelections = answer ? answer.split(", ").filter(Boolean) : [];
+    const isSelected = currentSelections.includes(option);
+    const newSelections = isSelected
+      ? currentSelections.filter((s) => s !== option)
+      : [...currentSelections, option];
+    onAnswer(question.id, newSelections.join(", "));
+  };
+
+  return (
+    <div className={`question-card ${isAnswered ? "answered" : ""}`}>
+      <div className="question-card-number">Q{String(index + 1).padStart(2, "0")}</div>
+      <div className="question-card-text">{question.question}</div>
+      <div className="question-card-purpose">{question.purpose}</div>
+
+      {question.type === "select" && question.options && (
+        <select
+          className="select-field"
+          value={answer || question.default || ""}
+          onChange={(e) => onAnswer(question.id, e.target.value)}
+        >
+          <option value="">Select an option</option>
+          {question.options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {question.type === "multiselect" && question.options && (
+        <div className="chip-group">
+          {question.options.map((opt) => {
+            const currentSelections = answer ? answer.split(", ").filter(Boolean) : [];
+            const isSelected = currentSelections.includes(opt);
+            return (
+              <button
+                key={opt}
+                className={`chip ${isSelected ? "selected" : ""}`}
+                onClick={() => handleMultiSelect(opt)}
+                type="button"
+              >
+                {isSelected && (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {question.type === "text" && (
+        <input
+          type="text"
+          className="input-field"
+          placeholder={question.default || "Type your answer..."}
+          value={answer || ""}
+          onChange={(e) => onAnswer(question.id, e.target.value)}
+        />
+      )}
+
+      {question.type === "scale" && (
+        <div>
+          <input
+            type="range"
+            className="scale-slider"
+            min="1"
+            max="10"
+            value={answer || question.default || "5"}
+            onChange={(e) => onAnswer(question.id, e.target.value)}
+          />
+          <div className="scale-labels">
+            <span>1 — Minimal</span>
+            <span>{answer || question.default || "5"}</span>
+            <span>10 — Maximum</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN PAGE COMPONENT
+   ═══════════════════════════════════════════════════════════════ */
+
+export default function ResearchRequestBuilder() {
+  /* ── State ────────────────────────────────────────────────── */
+  const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [researchQuestion, setResearchQuestion] = useState("");
+  const [expansionData, setExpansionData] = useState<ExpansionData | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [finalPrompt, setFinalPrompt] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastVisible, setToastVisible] = useState(false);
+
+  /* ── Derived ──────────────────────────────────────────────── */
+  const totalQuestions = expansionData?.expansion_questions?.length ?? 0;
+  const answeredCount = Object.values(answers).filter((v) => v !== "").length;
+  const allAnswered = totalQuestions > 0 && answeredCount === totalQuestions;
+
+  /* ── Toast ────────────────────────────────────────────────── */
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  }, []);
+
+  /* ── Initialize default answers when expansion data arrives ─ */
+  useEffect(() => {
+    if (expansionData?.expansion_questions) {
+      const defaults: Record<string, string> = {};
+      for (const q of expansionData.expansion_questions) {
+        if (q.default) {
+          defaults[q.id] = q.default;
+        } else if (q.type === "scale") {
+          defaults[q.id] = "5";
+        } else {
+          defaults[q.id] = "";
+        }
+      }
+      setAnswers(defaults);
+    }
+  }, [expansionData]);
+
+  /* ── API: Expand question → follow-ups ────────────────────── */
+  const handleExpand = useCallback(async () => {
+    if (!researchQuestion.trim()) return;
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/expand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "expand", question: researchQuestion }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+
+      const data: ExpansionData = await res.json();
+      setExpansionData(data);
+      setCurrentStep(2);
+    } catch (err) {
+      console.error("Expand error:", err);
+      showToast("Failed to analyze research question. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [researchQuestion, showToast]);
+
+  /* ── API: Build final prompt ──────────────────────────────── */
+  const handleBuildPrompt = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      const formattedAnswers: Record<string, string> = {};
+      if (expansionData?.expansion_questions) {
+        for (const q of expansionData.expansion_questions) {
+          formattedAnswers[q.question] = answers[q.id] || q.default || "";
+        }
+      }
+
+      const res = await fetch("/api/expand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "build",
+          question: researchQuestion,
+          answers: formattedAnswers,
+        }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+
+      const data = await res.json();
+      setFinalPrompt(data.prompt);
+      setCurrentStep(3);
+    } catch (err) {
+      console.error("Build error:", err);
+      showToast("Failed to build research brief. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [answers, expansionData, researchQuestion, showToast]);
+
+  /* ── Answer handler ───────────────────────────────────────── */
+  const handleAnswer = useCallback((id: string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [id]: value }));
+  }, []);
+
+  /* ── Copy to clipboard ───────────────────────────────────── */
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(finalPrompt);
+      showToast("Copied to clipboard");
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = finalPrompt;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      showToast("Copied to clipboard");
+    }
+  }, [finalPrompt, showToast]);
+
+  /* ── Download as .md ──────────────────────────────────────── */
+  const handleDownload = useCallback(() => {
+    const blob = new Blob([finalPrompt], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `research-brief-${new Date().toISOString().split("T")[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Downloaded research brief");
+  }, [finalPrompt, showToast]);
+
+  /* ── Start new request ────────────────────────────────────── */
+  const handleReset = useCallback(() => {
+    setCurrentStep(1);
+    setResearchQuestion("");
+    setExpansionData(null);
+    setAnswers({});
+    setFinalPrompt("");
+    setHasPaid(false);
+    setJobId("");
+    setIsSubmitting(false);
+  }, []);
+
+  /* ── Payment / preview state ──────────────────────────────── */
+  const [hasPaid, setHasPaid] = useState(false);
+  const [jobId, setJobId] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /* ── Simulate payment (Stripe will replace this) ──────────── */
+  const handlePayment = useCallback(async () => {
+    // TODO: Replace with real Stripe Checkout session creation
+    // For now, simulate a payment confirmation dialog
+    const confirmed = window.confirm(
+      "This will simulate a $297 payment for the Full Research Package.\n\nIn production, this triggers Stripe Checkout.\n\nProceed?"
+    );
+    if (!confirmed) return;
+    setHasPaid(true);
+    showToast("✓ Payment confirmed — Full report package unlocked!");
+  }, [showToast]);
+
+  /* ── Submit to Research Machine ───────────────────────────── */
+  const handleSubmit = useCallback(async () => {
+    if (!finalPrompt || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          division: expansionData?.detected_division,
+          question: researchQuestion,
+        }),
+      });
+      if (!res.ok) throw new Error("Submit failed");
+      const data = await res.json();
+      setJobId(data.jobId);
+      showToast(`✓ Submitted! Job ID: ${data.jobId} — Research Machine activated.`);
+    } catch (err) {
+      console.error("Submit error:", err);
+      showToast("Submission failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [finalPrompt, expansionData, researchQuestion, isSubmitting, showToast]);
+
+  /* ── Step label for sidebar ───────────────────────────────── */
+  const stepLabels: Record<Step, string> = {
+    1: "Terrain Survey",
+    2: "Refining Coordinates",
+    3: "Expedition Brief Ready",
+  };
+
+  /* ═══════════════════════════════════════════════════════════
+     RENDER
+     ═══════════════════════════════════════════════════════════ */
+
+  return (
+    <>
+      <ContourField />
+
+      <div className="expedition-layout">
+        {/* ── Header ──────────────────────────────────────────── */}
+        <header className="expedition-header">
+          <div className="header-brand">
+            <div className="header-logo">
+              <HeaderLogo />
+            </div>
+            <span className="header-title">
+              <strong>CIMedia</strong> Research Intelligence Agency
+            </span>
+          </div>
+          <div className="header-status">
+            <span className="status-dot" />
+            <span>v3.0 — 32 agents online</span>
+          </div>
+        </header>
+
+        {/* ── Mobile Progress Bar ─────────────────────────────── */}
+        <div className="mobile-progress">
+          <div className="mobile-progress-bar">
+            <div className={`mobile-progress-step ${currentStep >= 1 ? "active" : ""} ${currentStep > 1 ? "done" : ""}`} />
+            <div className={`mobile-progress-step ${currentStep >= 2 ? "active" : ""} ${currentStep > 2 ? "done" : ""}`} />
+            <div className={`mobile-progress-step ${currentStep >= 3 ? "active" : ""}`} />
+          </div>
+          <div className="mobile-progress-label">{stepLabels[currentStep]}</div>
+        </div>
+
+        {/* ── Main Content ────────────────────────────────────── */}
+        <main className="expedition-main">
+          {/* ──────── STEP 1: Research Question Input ──────── */}
+          <section
+            className={`step-section ${currentStep > 1 ? "completed" : ""}`}
+            style={{ display: currentStep >= 1 ? "block" : "none" }}
+          >
+            {currentStep === 1 && (
+              <>
+                <h1 className="step-hero-text">
+                  Map your research terrain
+                </h1>
+                <p className="step-subtitle">
+                  Describe the territory you want explored. Our 32-agent research
+                  team will chart the path.
+                </p>
+
+                <textarea
+                  className="research-input"
+                  placeholder="What do you want to research?"
+                  value={researchQuestion}
+                  onChange={(e) => setResearchQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && e.metaKey) handleExpand();
+                  }}
+                  disabled={isLoading}
+                />
+
+                <div className="btn-group">
+                  <button
+                    className="btn-primary"
+                    onClick={handleExpand}
+                    disabled={!researchQuestion.trim() || isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <LoadingDots />
+                        Charting terrain...
+                      </>
+                    ) : (
+                      <>Chart This Territory →</>
+                    )}
+                  </button>
+                </div>
+
+                {isLoading && (
+                  <div className="loading-terrain">
+                    <div className="loading-bar" />
+                    <span className="loading-text">
+                      Analyzing research question with AI...
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          {/* ──────── STEP 2: Follow-up Questions ─────────── */}
+          {currentStep >= 2 && expansionData && (
+            <section
+              className={`step-section ${currentStep > 2 ? "completed" : ""}`}
+            >
+              {currentStep === 2 && (
+                <>
+                  {/* Assessment */}
+                  <div className="division-badge">
+                    <span className="division-badge-dot" />
+                    {expansionData.detected_division}
+                  </div>
+
+                  <h2 className="step-section-header">Refining the Terrain</h2>
+                  <p className="step-section-desc">
+                    {expansionData.initial_assessment}
+                  </p>
+
+                  {/* Answer progress */}
+                  <div className="answer-progress">
+                    <span className="answer-progress-count">
+                      {answeredCount}/{totalQuestions}
+                    </span>
+                    <span>questions answered</span>
+                    <div style={{ flex: 1 }}>
+                      <div className="completeness-track">
+                        <div
+                          className="completeness-fill"
+                          style={{ width: `${totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Question cards */}
+                  <div>
+                    {expansionData.expansion_questions.map((q, i) => (
+                      <QuestionCard
+                        key={q.id}
+                        question={q}
+                        index={i}
+                        answer={answers[q.id] || ""}
+                        onAnswer={handleAnswer}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="btn-group">
+                    <button
+                      className="btn-primary"
+                      onClick={handleBuildPrompt}
+                      disabled={!allAnswered || isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <LoadingDots />
+                          Building brief...
+                        </>
+                      ) : (
+                        <>Build Research Brief →</>
+                      )}
+                    </button>
+                    <button className="btn-ghost" onClick={handleReset}>
+                      ← Start over
+                    </button>
+                  </div>
+
+                  {isLoading && (
+                    <div className="loading-terrain">
+                      <div className="loading-bar" />
+                      <span className="loading-text">
+                        Constructing your research expedition brief...
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+
+          {/* ──────── STEP 3: Final Prompt Output ─────────── */}
+          {currentStep === 3 && finalPrompt && (
+            <section className="step-section">
+              <h2 className="step-section-header">
+                Your Research Expedition Brief
+              </h2>
+              <p className="step-section-desc">
+                Your precision-engineered research brief is ready. Copy it
+                directly into the CIMedia Research Machine.
+              </p>
+
+              {/* Division + Completeness */}
+              {expansionData && (
+                <>
+                  <div className="division-badge">
+                    <span className="division-badge-dot" />
+                    {expansionData.detected_division} Division
+                  </div>
+                  <div className="completeness-bar">
+                    <span className="completeness-label">Prompt completeness</span>
+                    <div className="completeness-track">
+                      <div
+                        className="completeness-fill"
+                        style={{ width: "100%" }}
+                      />
+                    </div>
+                    <span className="completeness-label">100%</span>
+                  </div>
+                </>
+              )}
+
+              {/* Prompt output */}
+              <div className="prompt-output">
+                <div className="prompt-output-header">
+                  <span className="prompt-output-header-label">
+                    Research Engagement Brief — {expansionData?.detected_topic}
+                  </span>
+                  <button className="btn-ghost" onClick={handleCopy}>
+                    <CopyIcon /> Copy
+                  </button>
+                </div>
+                <div className="prompt-output-body">{finalPrompt}</div>
+              </div>
+
+              {/* Actions */}
+              <div className="prompt-actions">
+                <button className="btn-primary" onClick={handleCopy}>
+                  <CopyIcon />
+                  Copy to Clipboard
+                </button>
+                <button className="btn-secondary" onClick={handleDownload}>
+                  <DownloadIcon />
+                  Download as .md
+                </button>
+                <button className="btn-ghost" onClick={handleReset}>
+                  Start New Request
+                </button>
+              </div>
+
+              {/* ── Submit to Research Machine ─────────────────── */}
+              <div className="submit-section">
+                <button
+                  className="btn-submit"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !!jobId}
+                >
+                  {isSubmitting ? (
+                    <><LoadingDots /> Dispatching...</>
+                  ) : jobId ? (
+                    <>✓ Dispatched</>
+                  ) : (
+                    <>⚡ Submit to Research Machine</>
+                  )}
+                </button>
+                {jobId ? (
+                  <span className="submit-job-id">Job {jobId}</span>
+                ) : (
+                  <span className="submit-status">Sends brief directly to the 32-agent research team via Telegram</span>
+                )}
+              </div>
+
+              {/* ── Preview / Paywall Section ──────────────────── */}
+              <div className="preview-section">
+                <div className="preview-section-header">
+                  <div className="preview-section-eyebrow">What you&apos;ll receive</div>
+                  <h2 className="preview-section-title">Your Full Research Package</h2>
+                  <p className="preview-section-subtitle">
+                    Your research brief has been engineered. Below is a preview of the 9-deliverable package the Research Machine will produce — unlock the full package to receive every asset.
+                  </p>
+                </div>
+
+                {/* Asset Grid */}
+                <div className="asset-grid">
+                  {[
+                    { icon: "📄", cls: "report", name: "Full Research Report", desc: "15-25 page evidence-based analysis with citations", free: true },
+                    { icon: "⚡", cls: "brief", name: "Executive Brief", desc: "1-page board-level decision memo", free: true },
+                    { icon: "📊", cls: "data", name: "Data Tables", desc: "Standalone statistics and key metrics reference", free: false },
+                    { icon: "🔧", cls: "solutions", name: "AI Solutions Framework", desc: "Implementation specs with ROI estimates", free: false },
+                    { icon: "🌐", cls: "web", name: "Interactive Web Report", desc: "Premium site deployed to Vercel", free: false },
+                    { icon: "📓", cls: "notebook", name: "NotebookLM Notebook", desc: "AI-powered source companion with 5-15 sources", free: false },
+                  ].map((asset) => (
+                    <div
+                      key={asset.name}
+                      className={`asset-card ${!asset.free && !hasPaid ? "asset-card--locked" : ""}`}
+                    >
+                      <span className={`asset-card-badge ${asset.free ? "asset-card-badge--free" : "asset-card-badge--locked"}`}>
+                        {asset.free ? "Preview" : hasPaid ? "✓ Unlocked" : "Locked"}
+                      </span>
+                      <div className={`asset-card-icon asset-card-icon--${asset.cls}`}>{asset.icon}</div>
+                      <div className="asset-card-name">{asset.name}</div>
+                      <div className="asset-card-desc">{asset.desc}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sample Preview */}
+                <div className="sample-preview">
+                  <div className="sample-preview-header">
+                    <span className="sample-preview-title">📄 Sample: Executive Brief Preview</span>
+                    <span className="sample-preview-meta">First 30% — Free</span>
+                  </div>
+                  <div className="sample-preview-body">
+                    <pre className="sample-preview-text">{`EXECUTIVE BRIEF
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CIMedia Research Intelligence Agency v3.0
+Topic: ${expansionData?.detected_topic || researchQuestion.slice(0, 60)}
+Division: ${expansionData?.detected_division || "Pending"}
+Classification: Research Engagement Brief
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BOTTOM LINE UP FRONT
+${expansionData?.initial_assessment || "The Research Machine will transform your question into a comprehensive, evidence-based research engagement using 32+ specialized agents across 7 operational layers."}
+
+KEY FINDINGS PREVIEW
+• Root cause analysis across 6 analytical dimensions
+• Benchmarking against top-performing peer institutions
+• AI & intelligent machine solution recommendations
+• Phased implementation roadmap with ROI projections
+• Risk matrix with mitigation strategies
+
+[FULL REPORT CONTINUES — UNLOCK TO ACCESS]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}</pre>
+                    {!hasPaid && (
+                      <div className="sample-preview-locked">
+                        <span className="sample-preview-locked-label">🔒 Full content locked</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Paywall CTA or Success State */}
+                {!hasPaid ? (
+                  <div className="paywall-cta">
+                    <div className="paywall-cta-left">
+                      <div className="paywall-cta-badge">⭐ Full Research Package</div>
+                      <h3 className="paywall-cta-title">Unlock Your Complete Deliverables</h3>
+                      <p className="paywall-cta-desc">
+                        Get all 9 deliverables: full report, data tables, solutions framework, interactive web report, NotebookLM notebook, Google Drive folder, and Telegram delivery.
+                      </p>
+                    </div>
+                    <div className="paywall-cta-right">
+                      <div className="paywall-price">
+                        <div className="paywall-price-amount">$297</div>
+                        <div className="paywall-price-label">one-time · all deliverables included</div>
+                      </div>
+                      <button className="btn-paywall" onClick={handlePayment}>
+                        🔓 Unlock Full Package
+                      </button>
+                      <span className="paywall-guarantee">🛡️ 100% satisfaction guarantee · Delivered within 48h</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="payment-success">
+                    <div className="payment-success-icon">🎉</div>
+                    <div className="payment-success-title">Full Package Unlocked!</div>
+                    <p className="payment-success-desc">
+                      Your research package is being prepared by the Research Machine. You&apos;ll receive all 9 deliverables within 48 hours via Telegram and Google Drive.
+                    </p>
+                    <button className="btn-primary" onClick={handleSubmit} disabled={isSubmitting || !!jobId}>
+                      {isSubmitting ? <><LoadingDots /> Dispatching...</> : jobId ? <>✓ Research Machine Activated</> : <>⚡ Dispatch to Research Machine</>}
+                    </button>
+                    {jobId && <div style={{marginTop: "0.75rem"}}><span className="submit-job-id">Job {jobId}</span></div>}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+        </main>
+
+        {/* ── Sidebar (Desktop) ───────────────────────────────── */}
+        <aside className="expedition-sidebar">
+          <ContourRing
+            step={currentStep}
+            answeredCount={answeredCount}
+            totalQuestions={totalQuestions}
+          />
+          <div className="contour-ring-label">Expedition Progress</div>
+          <div className="contour-ring-step">{stepLabels[currentStep]}</div>
+
+          {/* Expedition Summary */}
+          <div className="sidebar-summary">
+            <div className="sidebar-summary-title">Expedition Log</div>
+
+            <div className="sidebar-summary-item">
+              <span className="sidebar-summary-item-label">Step</span>
+              <span className="sidebar-summary-item-value">
+                {currentStep} of 3
+              </span>
+            </div>
+
+            {researchQuestion && (
+              <div className="sidebar-summary-item">
+                <span className="sidebar-summary-item-label">Topic</span>
+                <span className="sidebar-summary-item-value">
+                  {expansionData?.detected_topic ||
+                    researchQuestion.slice(0, 60) +
+                      (researchQuestion.length > 60 ? "..." : "")}
+                </span>
+              </div>
+            )}
+
+            {expansionData && (
+              <div className="sidebar-summary-item">
+                <span className="sidebar-summary-item-label">Division</span>
+                <span className="sidebar-summary-item-value">
+                  {expansionData.detected_division}
+                </span>
+              </div>
+            )}
+
+            {currentStep >= 2 && (
+              <div className="sidebar-summary-item">
+                <span className="sidebar-summary-item-label">Answers</span>
+                <span className="sidebar-summary-item-value">
+                  {answeredCount} / {totalQuestions}
+                </span>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="sidebar-summary-item">
+                <span className="sidebar-summary-item-label">Status</span>
+                <span className="sidebar-summary-item-value" style={{ color: "var(--teal-glow)" }}>
+                  Brief ready
+                </span>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* ── Toast ─────────────────────────────────────────────── */}
+      <div className={`toast ${toastVisible ? "visible" : ""}`}>
+        {toastMessage}
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INLINE SVG ICON COMPONENTS
+   ═══════════════════════════════════════════════════════════════ */
+
+function LoadingDots() {
+  return (
+    <span className="loading-dots" aria-hidden="true">
+      <span className="loading-dot" />
+      <span className="loading-dot" />
+      <span className="loading-dot" />
+    </span>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <rect
+        x="5"
+        y="5"
+        width="8"
+        height="8"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M11 3H4.5A1.5 1.5 0 003 4.5V11"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+    >
+      <path
+        d="M8 2v8m0 0L5 7.5M8 10l3-2.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 12h10"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
