@@ -283,6 +283,36 @@ export default function ResearchRequestBuilder() {
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
+  const [isManagerMode, setIsManagerMode] = useState(false);
+
+  /* ── Manager Backdoor ────────────────────────────────────── */
+  // 1. URL param: ?access=CIMEDIA_ADMIN_2026
+  // 2. Keyboard: Shift+Ctrl+M anywhere on the page
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const accessKey = params.get("access");
+    if (accessKey === "CIMEDIA_ADMIN_2026") {
+      setIsManagerMode(true);
+      // Clean the URL so the key isn't visible in screen shares
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+    }
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      // Shift + Ctrl + M = Manager mode toggle
+      if (e.shiftKey && e.ctrlKey && e.key === "M") {
+        setIsManagerMode((prev) => {
+          const next = !prev;
+          // Show a subtle console message (not a toast — avoid leaking in demos)
+          console.log(`%c[CIMedia] Manager mode ${next ? "ON" : "OFF"}`, "color: #C1694F; font-weight: bold;");
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, []);
 
   /* ── Derived ──────────────────────────────────────────────── */
   const totalQuestions = expansionData?.expansion_questions?.length ?? 0;
@@ -421,6 +451,7 @@ export default function ResearchRequestBuilder() {
     setHasPaid(false);
     setJobId("");
     setIsSubmitting(false);
+    // Note: isManagerMode persists across resets intentionally
   }, []);
 
   /* ── Payment / preview state ──────────────────────────────── */
@@ -787,7 +818,7 @@ KEY FINDINGS PREVIEW
 
 [FULL REPORT CONTINUES — UNLOCK TO ACCESS]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}</pre>
-                    {!hasPaid && (
+                    {!(hasPaid || isManagerMode) && (
                       <div className="sample-preview-locked">
                         <span className="sample-preview-locked-label">🔒 Full content locked</span>
                       </div>
@@ -796,7 +827,26 @@ KEY FINDINGS PREVIEW
                 </div>
 
                 {/* Paywall CTA or Success State */}
-                {!hasPaid ? (
+                {isManagerMode ? (
+                  <div className="paywall-cta" style={{ borderColor: "var(--accent-counter)", background: "oklch(0.45 0.07 195 / 0.06)" }}>
+                    <div className="paywall-cta-left">
+                      <div className="paywall-cta-badge" style={{ color: "var(--accent-counter)" }}>👁 Manager Preview Mode</div>
+                      <h3 className="paywall-cta-title">Full Package — Manager View</h3>
+                      <p className="paywall-cta-desc">
+                        You are viewing all 9 deliverables as a manager. Customers see a locked paywall at $297. Press <kbd style={{fontFamily:"var(--font-mono)",fontSize:"0.7rem",padding:"0.1rem 0.4rem",background:"var(--bg-raised)",borderRadius:"4px",border:"1px solid var(--border-active)"}}>Shift+Ctrl+M</kbd> to toggle this view.
+                      </p>
+                    </div>
+                    <div className="paywall-cta-right">
+                      <div className="paywall-price">
+                        <div className="paywall-price-amount" style={{ color: "var(--accent-counter)" }}>$297</div>
+                        <div className="paywall-price-label">customer price · all deliverables</div>
+                      </div>
+                      <button className="btn-submit" onClick={() => setIsManagerMode(false)}>
+                        Exit Manager View
+                      </button>
+                    </div>
+                  </div>
+                ) : !hasPaid ? (
                   <div className="paywall-cta">
                     <div className="paywall-cta-left">
                       <div className="paywall-cta-badge">⭐ Full Research Package</div>
