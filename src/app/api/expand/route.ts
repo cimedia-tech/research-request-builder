@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const { action, question, answers } = body;
 
     const geminiApiKey = process.env.GEMINI_API_KEY;
-    const isWorkingGeminiKey = geminiApiKey && geminiApiKey !== "AIzaSyDFIWhNUioUfQ1_T_061bLOafykTFXyfvw";
+    const isWorkingGeminiKey = geminiApiKey && geminiApiKey.startsWith("AIzaSy") && geminiApiKey !== "AIzaSyDFIWhNUioUfQ1_T_061bLOafykTFXyfvw";
 
     if (isWorkingGeminiKey) {
       console.log("Using direct Google Gemini API...");
