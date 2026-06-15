@@ -288,6 +288,9 @@ export default function ResearchRequestBuilder() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
   const [isManagerMode, setIsManagerMode] = useState(false);
+  const [pastJobs, setPastJobs] = useState<any[]>([]);
+  const [isLoadingPastJobs, setIsLoadingPastJobs] = useState(false);
+  const [gdriveFolderLink, setGdriveFolderLink] = useState("");
 
   /* ── Manager Backdoor ────────────────────────────────────── */
   // 1. URL param: ?access=CIMEDIA_ADMIN_2026
@@ -329,6 +332,56 @@ export default function ResearchRequestBuilder() {
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2500);
   }, []);
+
+  // Look up client history when email changes
+  useEffect(() => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(submitterEmail)) {
+      setPastJobs([]);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setIsLoadingPastJobs(true);
+      try {
+        const res = await fetch(`/api/client-jobs?email=${encodeURIComponent(submitterEmail)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPastJobs(data.jobs || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch client history:", err);
+      } finally {
+        setIsLoadingPastJobs(false);
+      }
+    }, 800);
+
+    return () => clearTimeout(delayDebounce);
+  }, [submitterEmail]);
+
+  // Load a selected past brief from Google Drive
+  const handleSelectPastJob = useCallback(async (job: any) => {
+    setIsLoading(true);
+    showToast("Retrieving selected brief from Google Drive...");
+    try {
+      const res = await fetch(`/api/client-jobs/load?jobFolderId=${job.folderId}`);
+      if (!res.ok) throw new Error("Failed to load brief data");
+      const data = await res.json();
+      
+      setFinalPrompt(data.prompt);
+      setPreviewContent(data.preview);
+      setJobId(job.jobId);
+      setGdriveFolderLink(job.link);
+      setResearchQuestion(job.topic);
+      setHasPaid(false);
+      setCurrentStep(3);
+    } catch (err) {
+      console.error("Error loading selected job:", err);
+      showToast("Failed to load the selected brief from Google Drive.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
 
   /* ── Initialize default answers when expansion data arrives ─ */
   useEffect(() => {
@@ -461,6 +514,8 @@ export default function ResearchRequestBuilder() {
     setHasPaid(false);
     setJobId("");
     setIsSubmitting(false);
+    setGdriveFolderLink("");
+    setPastJobs([]);
     // Note: isManagerMode persists across resets intentionally
   }, []);
 
@@ -491,15 +546,21 @@ export default function ResearchRequestBuilder() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: finalPrompt,
+          preview: previewContent,
           division: expansionData?.detected_division,
           question: researchQuestion,
           name: submitterName,
           email: submitterEmail,
+          answers: answers,
+          questions: expansionData?.expansion_questions || [],
         }),
       });
       if (!res.ok) throw new Error("Submit failed");
       const data = await res.json();
       setJobId(data.jobId);
+      if (data.gdriveFolderLink) {
+        setGdriveFolderLink(data.gdriveFolderLink);
+      }
       showToast(`✓ Submitted! Job ID: ${data.jobId} — Research Machine activated.`);
     } catch (err) {
       console.error("Submit error:", err);
@@ -507,7 +568,7 @@ export default function ResearchRequestBuilder() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [finalPrompt, expansionData, researchQuestion, submitterName, submitterEmail, isSubmitting, showToast]);
+  }, [finalPrompt, expansionData, researchQuestion, submitterName, submitterEmail, answers, previewContent, isSubmitting, showToast]);
 
   /* ── Step label for sidebar ───────────────────────────────── */
   const stepLabels: Record<Step, string> = {
@@ -594,7 +655,41 @@ export default function ResearchRequestBuilder() {
                     disabled={isLoading}
                     required
                   />
+                  {isLoadingPastJobs && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <LoadingDots /> Checking client history...
+                    </div>
+                  )}
                 </div>
+
+                {pastJobs.length > 0 && (
+                  <div className="past-jobs-container" style={{ margin: "1.5rem 0", padding: "1.25rem", border: "1px dashed var(--border-active)", borderRadius: "8px", background: "var(--bg-raised)" }}>
+                    <h3 style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", marginBottom: "0.5rem", fontWeight: 600 }}>
+                      📁 Existing Research Briefs Found
+                    </h3>
+                    <p style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginBottom: "1rem", lineHeight: "1.4" }}>
+                      We found {pastJobs.length} existing research brief(s) under this email. Select one to proceed to checkout/preview, or continue below to build a new request.
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                      {pastJobs.map((job) => (
+                        <div key={job.jobId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", maxWidth: "70%" }}>
+                            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.topic}</span>
+                            <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>ID: {job.jobId} · {new Date(job.createdTime).toLocaleDateString()}</span>
+                          </div>
+                          <button
+                            className="btn-ghost"
+                            style={{ padding: "0.4rem 0.8rem", fontSize: "0.75rem", borderColor: "var(--accent-counter)", color: "var(--accent-counter)", background: "transparent", cursor: "pointer", transition: "all 0.2s" }}
+                            onClick={() => handleSelectPastJob(job)}
+                            type="button"
+                          >
+                            Load Brief →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="input-group" style={{ marginBottom: "1.5rem" }}>
                   <label className="input-label" style={{ display: "block", marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Research Question</label>
@@ -794,7 +889,20 @@ export default function ResearchRequestBuilder() {
                   )}
                 </button>
                 {jobId ? (
-                  <span className="submit-job-id">Job {jobId}</span>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
+                    <span className="submit-job-id">Job {jobId}</span>
+                    {gdriveFolderLink && (
+                      <a
+                        href={gdriveFolderLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-secondary"
+                        style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", fontSize: "0.8rem" }}
+                      >
+                        📁 Open Google Drive Folder
+                      </a>
+                    )}
+                  </div>
                 ) : (
                   <span className="submit-status">Sends brief directly to the 32-agent research team via Telegram</span>
                 )}
@@ -921,7 +1029,22 @@ KEY FINDINGS PREVIEW
                     <button className="btn-primary" onClick={handleSubmit} disabled={isSubmitting || !!jobId}>
                       {isSubmitting ? <><LoadingDots /> Dispatching...</> : jobId ? <>✓ Research Machine Activated</> : <>⚡ Dispatch to Research Machine</>}
                     </button>
-                    {jobId && <div style={{marginTop: "0.75rem"}}><span className="submit-job-id">Job {jobId}</span></div>}
+                    {jobId && (
+                      <div style={{marginTop: "0.75rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem"}}>
+                        <span className="submit-job-id">Job {jobId}</span>
+                        {gdriveFolderLink && (
+                          <a
+                            href={gdriveFolderLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-secondary"
+                            style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", fontSize: "0.8rem" }}
+                          >
+                            📁 Open Google Drive Folder
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
