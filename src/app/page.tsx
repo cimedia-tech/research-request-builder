@@ -179,13 +179,14 @@ function QuestionCard({
 }: {
   question: ExpansionQuestion;
   index: number;
-  answer: string;
+  answer: any;
   onAnswer: (id: string, value: string) => void;
 }) {
-  const isAnswered = answer !== undefined && answer !== "";
+  const answerStr = answer !== undefined && answer !== null ? String(answer) : "";
+  const isAnswered = answerStr !== "";
 
   const handleMultiSelect = (option: string) => {
-    const currentSelections = answer ? answer.split(", ").filter(Boolean) : [];
+    const currentSelections = answerStr ? answerStr.split(", ").filter(Boolean) : [];
     const isSelected = currentSelections.includes(option);
     const newSelections = isSelected
       ? currentSelections.filter((s) => s !== option)
@@ -202,7 +203,7 @@ function QuestionCard({
       {question.type === "select" && question.options && (
         <select
           className="select-field"
-          value={answer || question.default || ""}
+          value={answerStr || String(question.default || "")}
           onChange={(e) => onAnswer(question.id, e.target.value)}
         >
           <option value="">Select an option</option>
@@ -217,7 +218,7 @@ function QuestionCard({
       {question.type === "multiselect" && question.options && (
         <div className="chip-group">
           {question.options.map((opt) => {
-            const currentSelections = answer ? answer.split(", ").filter(Boolean) : [];
+            const currentSelections = answerStr ? answerStr.split(", ").filter(Boolean) : [];
             const isSelected = currentSelections.includes(opt);
             return (
               <button
@@ -243,7 +244,7 @@ function QuestionCard({
           type="text"
           className="input-field"
           placeholder={question.default || "Type your answer..."}
-          value={answer || ""}
+          value={answerStr || ""}
           onChange={(e) => onAnswer(question.id, e.target.value)}
         />
       )}
@@ -255,12 +256,12 @@ function QuestionCard({
             className="scale-slider"
             min="1"
             max="10"
-            value={answer || question.default || "5"}
+            value={answerStr || String(question.default || "5")}
             onChange={(e) => onAnswer(question.id, e.target.value)}
           />
           <div className="scale-labels">
             <span>1 — Minimal</span>
-            <span>{answer || question.default || "5"}</span>
+            <span>{answerStr || String(question.default || "5")}</span>
             <span>10 — Maximum</span>
           </div>
         </div>
@@ -277,9 +278,12 @@ export default function ResearchRequestBuilder() {
   /* ── State ────────────────────────────────────────────────── */
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [researchQuestion, setResearchQuestion] = useState("");
+  const [submitterName, setSubmitterName] = useState("");
+  const [submitterEmail, setSubmitterEmail] = useState("");
   const [expansionData, setExpansionData] = useState<ExpansionData | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [finalPrompt, setFinalPrompt] = useState("");
+  const [previewContent, setPreviewContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
@@ -332,8 +336,8 @@ export default function ResearchRequestBuilder() {
     if (Array.isArray(questions)) {
       const defaults: Record<string, string> = {};
       for (const q of questions) {
-        if (q.default) {
-          defaults[q.id] = q.default;
+        if (q.default !== undefined && q.default !== null) {
+          defaults[q.id] = String(q.default);
         } else if (q.type === "scale") {
           defaults[q.id] = "5";
         } else {
@@ -396,6 +400,7 @@ export default function ResearchRequestBuilder() {
 
       const data = await res.json();
       setFinalPrompt(data.prompt);
+      setPreviewContent(data.preview);
       setCurrentStep(3);
     } catch (err) {
       console.error("Build error:", err);
@@ -447,9 +452,12 @@ export default function ResearchRequestBuilder() {
   const handleReset = useCallback(() => {
     setCurrentStep(1);
     setResearchQuestion("");
+    setSubmitterName("");
+    setSubmitterEmail("");
     setExpansionData(null);
     setAnswers({});
     setFinalPrompt("");
+    setPreviewContent("");
     setHasPaid(false);
     setJobId("");
     setIsSubmitting(false);
@@ -485,6 +493,8 @@ export default function ResearchRequestBuilder() {
           prompt: finalPrompt,
           division: expansionData?.detected_division,
           question: researchQuestion,
+          name: submitterName,
+          email: submitterEmail,
         }),
       });
       if (!res.ok) throw new Error("Submit failed");
@@ -497,7 +507,7 @@ export default function ResearchRequestBuilder() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [finalPrompt, expansionData, researchQuestion, isSubmitting, showToast]);
+  }, [finalPrompt, expansionData, researchQuestion, submitterName, submitterEmail, isSubmitting, showToast]);
 
   /* ── Step label for sidebar ───────────────────────────────── */
   const stepLabels: Record<Step, string> = {
@@ -558,22 +568,53 @@ export default function ResearchRequestBuilder() {
                   team will chart the path.
                 </p>
 
-                <textarea
-                  className="research-input"
-                  placeholder="What do you want to research?"
-                  value={researchQuestion}
-                  onChange={(e) => setResearchQuestion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && e.metaKey) handleExpand();
-                  }}
-                  disabled={isLoading}
-                />
+                <div className="input-group" style={{ marginBottom: "1.25rem" }}>
+                  <label className="input-label" style={{ display: "block", marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Your Name</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    style={{ width: "100%", padding: "0.75rem", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-primary)" }}
+                    placeholder="E.g., Jane Doe"
+                    value={submitterName}
+                    onChange={(e) => setSubmitterName(e.target.value)}
+                    disabled={isLoading}
+                    required
+                  />
+                </div>
+
+                <div className="input-group" style={{ marginBottom: "1.25rem" }}>
+                  <label className="input-label" style={{ display: "block", marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Your Email</label>
+                  <input
+                    type="email"
+                    className="input-field"
+                    style={{ width: "100%", padding: "0.75rem", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-primary)" }}
+                    placeholder="E.g., jane@example.com"
+                    value={submitterEmail}
+                    onChange={(e) => setSubmitterEmail(e.target.value)}
+                    disabled={isLoading}
+                    required
+                  />
+                </div>
+
+                <div className="input-group" style={{ marginBottom: "1.5rem" }}>
+                  <label className="input-label" style={{ display: "block", marginBottom: "0.5rem", color: "var(--text-secondary)", fontSize: "var(--text-xs)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Research Question</label>
+                  <textarea
+                    className="research-input"
+                    placeholder="What do you want to research?"
+                    value={researchQuestion}
+                    onChange={(e) => setResearchQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && e.metaKey) handleExpand();
+                    }}
+                    disabled={isLoading}
+                  />
+                </div>
 
                 <div className="btn-group">
                   <button
                     className="btn-primary"
                     onClick={handleExpand}
-                    disabled={!researchQuestion.trim() || isLoading}
+                    disabled={!researchQuestion.trim() || !submitterName.trim() || !submitterEmail.trim() || isLoading}
                   >
                     {isLoading ? (
                       <>
@@ -796,11 +837,12 @@ export default function ResearchRequestBuilder() {
                 {/* Sample Preview */}
                 <div className="sample-preview">
                   <div className="sample-preview-header">
-                    <span className="sample-preview-title">📄 Sample: Executive Brief Preview</span>
-                    <span className="sample-preview-meta">First 30% — Free</span>
+                    <span className="sample-preview-title">📄 Tailored Expedition Outline</span>
+                    <span className="sample-preview-meta">Free Initial Analysis & Agent Alignment</span>
                   </div>
-                  <div className="sample-preview-body">
-                    <pre className="sample-preview-text">{`EXECUTIVE BRIEF
+                  <div className="sample-preview-body" style={{ maxHeight: "450px", overflowY: "auto", position: "relative", padding: "1.5rem", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                    <div className="preview-markdown" style={{ fontSize: "0.9rem", color: "var(--text-secondary)", lineHeight: "1.6", whiteSpace: "pre-wrap", textAlign: "left", fontFamily: "var(--font-body)" }}>
+                      {previewContent || `EXECUTIVE BRIEF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CIMedia Research Intelligence Agency v3.0
 Topic: ${expansionData?.detected_topic || researchQuestion.slice(0, 60)}
@@ -819,10 +861,11 @@ KEY FINDINGS PREVIEW
 • Risk matrix with mitigation strategies
 
 [FULL REPORT CONTINUES — UNLOCK TO ACCESS]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}</pre>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`}
+                    </div>
                     {!(hasPaid || isManagerMode) && (
-                      <div className="sample-preview-locked">
-                        <span className="sample-preview-locked-label">🔒 Full content locked</span>
+                      <div className="sample-preview-locked" style={{ background: "linear-gradient(to bottom, transparent, var(--bg-surface) 90%)" }}>
+                        <span className="sample-preview-locked-label">🔒 Complete 9-Asset Deliverable Stack Locked</span>
                       </div>
                     )}
                   </div>

@@ -46,25 +46,32 @@ RESPOND ONLY WITH VALID JSON. No markdown, no explanation, just the JSON object.
 
 const PROMPT_BUILDER_SYSTEM = `You are the Research Request Architect for CIMedia Research Intelligence Agency v3.0.
 
-Given a research topic and the user's answers to follow-up questions, construct a perfectly formatted research engagement brief for the Research Machine.
+Given a research topic and the user's answers to follow-up questions, output a JSON object containing:
 
-## OUTPUT FORMAT
+1. "prompt" — A comprehensive markdown research brief for the 32-agent Research Machine. Include:
+   - **ENGAGEMENT HEADER** — Project name, classification, division, date
+   - **CLIENT BRIEF** — What the client is and what they're looking for
+   - **RESEARCH QUESTION** — The precise, expanded research question
+   - **REQUIRED DELIVERABLES** — Specific files/reports to produce with detailed content requirements
+   - **RESEARCH STANDARDS** — Methodology, source requirements, confidence levels
+   - **SCOPE PARAMETERS** — Geographic focus, time period, institutional targets, constraints
+   - **KEY HYPOTHESES TO TEST** — Specific claims or assumptions to validate
+   - **SOLUTIONS REQUIREMENTS** — Whether to include AI/tech recommendations, budget context
+   - **IMPORTANT NOTES** — Special considerations, cultural context, sensitivities
 
-Produce a comprehensive research prompt in markdown that includes:
+2. "preview" — A highly persuasive, beautifully styled markdown research preview designed to show the client the exact value they will receive and entice them to pay $297. It MUST contain:
+   - **BOTTOM LINE UP FRONT (BLUF)**: 2-3 sentences summarizing the strategic focus of this research for their specific topic.
+   - **THE EXPEDITION PLAN (OUTLINE)**: A detailed, customized 4-phase outline of what the full research report will uncover:
+     - *Phase 1: Landscape Scan* (what industry trends, databases, or benchmarks we will study)
+     - *Phase 2: Deep-Dive Analysis* (what specific root-causes or pain points we will analyze)
+     - *Phase 3: Solutions Framework* (what custom interventions or ROI models we will design)
+     - *Phase 4: Risk & Validation* (what failure modes and skeptic reviews we will run)
+   - **ACTIVATED SPECIALISTS**: Name 3-4 specific agents from our roster (e.g. Tomoko Hayashi for Economic Impact, Malik Jefferson for Web Intelligence, Prof. Ingrid Holm for Systems Thinking) that will lead this project and briefly explain their exact contribution.
+   - **PITCH**: A persuasive closing statement highlighting that the full 9-deliverable research package is ready to be executed by the 32-agent team.
 
-1. **ENGAGEMENT HEADER** — Project name, classification, division, date
-2. **CLIENT BRIEF** — What the client is and what they're looking for
-3. **RESEARCH QUESTION** — The precise, expanded research question
-4. **REQUIRED DELIVERABLES** — Specific files/reports to produce with detailed content requirements
-5. **RESEARCH STANDARDS** — Methodology, source requirements, confidence levels
-6. **SCOPE PARAMETERS** — Geographic focus, time period, institutional targets, constraints
-7. **KEY HYPOTHESES TO TEST** — Specific claims or assumptions to validate
-8. **SOLUTIONS REQUIREMENTS** — Whether to include AI/tech recommendations, budget context
-9. **IMPORTANT NOTES** — Special considerations, cultural context, sensitivities
+Make the prompt specific and structured for the Research Machine, and the preview highly compelling and personalized for the user.
 
-Make the prompt specific, actionable, and structured for maximum Research Machine effectiveness. The prompt should be detailed enough that the Research Machine knows exactly what to research, how deep to go, what frameworks to apply, and what deliverables to produce.
-
-RESPOND ONLY WITH THE MARKDOWN PROMPT. No meta-commentary.`;
+RESPOND ONLY WITH VALID JSON. No markdown wrappers, no meta-commentary.`;
 
 function normalizeExpansionData(responseText: string, question: string) {
   console.log("Raw AI Response:", responseText);
@@ -122,13 +129,29 @@ export async function POST(request: NextRequest) {
           .map(([key, value]) => `- ${key}: ${value}`)
           .join("\n");
         const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: `${PROMPT_BUILDER_SYSTEM}\n\nOriginal research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement prompt now.` }] }],
+          contents: [{ role: "user", parts: [{ text: `${PROMPT_BUILDER_SYSTEM}\n\nOriginal research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement JSON now.` }] }],
           generationConfig: {
             temperature: 0.6,
             maxOutputTokens: 4096,
+            responseMimeType: "application/json",
           },
         });
-        return NextResponse.json({ prompt: result.response.text() });
+        const responseText = result.response.text();
+        let parsedBrief: { prompt: string; preview: string };
+        try {
+          parsedBrief = JSON.parse(responseText);
+        } catch {
+          const cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+          try {
+            parsedBrief = JSON.parse(cleanText);
+          } catch (e) {
+            parsedBrief = {
+              prompt: responseText,
+              preview: "### Tailored Research Outline\n\n- **Phase 1: Landscape Scan**\n- **Phase 2: Deep Analysis**\n- **Phase 3: Solutions Framework**\n- **Phase 4: Risk & Validation**\n\n*Unlock the full package to view the custom outline.*"
+            };
+          }
+        }
+        return NextResponse.json(parsedBrief);
       }
     } else {
       const openRouterKey = process.env.OPENROUTER_API_KEY;
@@ -179,8 +202,9 @@ export async function POST(request: NextRequest) {
             model: "google/gemini-2.5-flash",
             messages: [
               { role: "system", content: PROMPT_BUILDER_SYSTEM },
-              { role: "user", content: `Original research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement prompt now.` }
+              { role: "user", content: `Original research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement JSON now.` }
             ],
+            response_format: { type: "json_object" },
             temperature: 0.6,
             max_tokens: 4096,
           }),
@@ -192,8 +216,25 @@ export async function POST(request: NextRequest) {
         }
 
         const data = await response.json();
-        const prompt = data.choices[0].message.content;
-        return NextResponse.json({ prompt });
+        const responseText = data.choices[0].message.content;
+        console.log("Raw responseText for build:", responseText);
+        let parsedBrief: { prompt: string; preview: string };
+        try {
+          parsedBrief = JSON.parse(responseText);
+        } catch (err) {
+          console.error("JSON parse failed. Error:", err);
+          const cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+          try {
+            parsedBrief = JSON.parse(cleanText);
+          } catch (e) {
+            console.error("JSON parse failed after cleanup. Error:", e);
+            parsedBrief = {
+              prompt: responseText,
+              preview: "### Tailored Research Outline\n\n- **Phase 1: Landscape Scan**\n- **Phase 2: Deep Analysis**\n- **Phase 3: Solutions Framework**\n- **Phase 4: Risk & Validation**\n\n*Unlock the full package to view the custom outline.*"
+            };
+          }
+        }
+        return NextResponse.json(parsedBrief);
       }
     }
 

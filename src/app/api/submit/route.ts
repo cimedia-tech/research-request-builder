@@ -14,7 +14,7 @@ import path from "path";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { prompt, division, question } = body;
+    const { prompt, division, question, name, email } = body;
 
     if (!prompt) {
       return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
@@ -24,10 +24,10 @@ export async function POST(request: NextRequest) {
     const timestamp = new Date().toISOString();
 
     // 1. Send via Telegram
-    const telegramSent = await sendTelegram(jobId, division, question, prompt);
+    const telegramSent = await sendTelegram(jobId, division, question, prompt, name, email);
 
     // 2. Save to dispatch queue (for local Research Machine pickup)
-    const dispatched = await saveToDispatchQueue(jobId, division, question, prompt, timestamp);
+    const dispatched = await saveToDispatchQueue(jobId, division, question, prompt, timestamp, name, email);
 
     return NextResponse.json({
       success: true,
@@ -50,7 +50,9 @@ async function sendTelegram(
   jobId: string,
   division: string,
   question: string,
-  prompt: string
+  prompt: string,
+  name?: string,
+  email?: string
 ): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -71,6 +73,7 @@ async function sendTelegram(
 
 📋 Job ID: ${jobId}
 🏢 Division: ${division || "Auto-detect"}
+👤 Submitter: ${name || "Anonymous"} (${email || "N/A"})
 📅 Submitted: ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })}
 
 💡 Original Question:
@@ -117,7 +120,9 @@ async function saveToDispatchQueue(
   division: string,
   question: string,
   prompt: string,
-  timestamp: string
+  timestamp: string,
+  name?: string,
+  email?: string
 ): Promise<boolean> {
   if (process.env.VERCEL) {
     console.log("Running on Vercel, skipping local filesystem queue save");
@@ -144,7 +149,7 @@ async function saveToDispatchQueue(
       originalQuestion: question,
       prompt,
       submittedAt: timestamp,
-      submittedBy: "CIMedia Research Request Builder",
+      submittedBy: name ? `${name} <${email}>` : "CIMedia Research Request Builder",
       targetAgent: "research_machine",
     };
 
@@ -154,7 +159,7 @@ async function saveToDispatchQueue(
     const promptFile = path.join(dispatchDir, `${jobId}.md`);
     fs.writeFileSync(
       promptFile,
-      `# Research Engagement: ${jobId}\n\n**Submitted:** ${timestamp}\n**Division:** ${division || "Auto-detect"}\n**Question:** ${question}\n\n---\n\n${prompt}`
+      `# Research Engagement: ${jobId}\n\n**Submitted:** ${timestamp}\n**Submitter:** ${name || "Anonymous"} (${email || "N/A"})\n**Division:** ${division || "Auto-detect"}\n**Question:** ${question}\n\n---\n\n${prompt}`
     );
 
     return true;
