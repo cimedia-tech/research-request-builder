@@ -315,7 +315,7 @@ export default function ResearchRequestBuilder() {
   }, []);
 
   /* ── Derived ──────────────────────────────────────────────── */
-  const totalQuestions = expansionData?.expansion_questions?.length ?? 0;
+  const totalQuestions = Array.isArray(expansionData?.expansion_questions) ? expansionData.expansion_questions.length : 0;
   const answeredCount = Object.values(answers).filter((v) => v !== "").length;
   const allAnswered = totalQuestions > 0 && answeredCount === totalQuestions;
 
@@ -328,9 +328,10 @@ export default function ResearchRequestBuilder() {
 
   /* ── Initialize default answers when expansion data arrives ─ */
   useEffect(() => {
-    if (expansionData?.expansion_questions) {
+    const questions = expansionData?.expansion_questions;
+    if (Array.isArray(questions)) {
       const defaults: Record<string, string> = {};
-      for (const q of expansionData.expansion_questions) {
+      for (const q of questions) {
         if (q.default) {
           defaults[q.id] = q.default;
         } else if (q.type === "scale") {
@@ -374,8 +375,9 @@ export default function ResearchRequestBuilder() {
 
     try {
       const formattedAnswers: Record<string, string> = {};
-      if (expansionData?.expansion_questions) {
-        for (const q of expansionData.expansion_questions) {
+      const questions = expansionData?.expansion_questions;
+      if (Array.isArray(questions)) {
+        for (const q of questions) {
           formattedAnswers[q.question] = answers[q.id] || q.default || "";
         }
       }
@@ -632,7 +634,7 @@ export default function ResearchRequestBuilder() {
 
                   {/* Question cards */}
                   <div>
-                    {expansionData.expansion_questions.map((q, i) => (
+                    {Array.isArray(expansionData.expansion_questions) && expansionData.expansion_questions.map((q, i) => (
                       <QuestionCard
                         key={q.id}
                         question={q}

@@ -66,6 +66,32 @@ Make the prompt specific, actionable, and structured for maximum Research Machin
 
 RESPOND ONLY WITH THE MARKDOWN PROMPT. No meta-commentary.`;
 
+function normalizeExpansionData(responseText: string, question: string) {
+  console.log("Raw AI Response:", responseText);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (e) {
+    // Fallback if the response contains markdown code block formatting
+    const cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+    parsed = JSON.parse(cleanText);
+  }
+
+  // Ensure all required fields exist with correct fallback key naming
+  return {
+    detected_division: parsed.detected_division || parsed.division || "Cross-Cutting",
+    detected_topic: parsed.detected_topic || parsed.topic || question,
+    initial_assessment: parsed.initial_assessment || parsed.assessment || parsed.summary || "Ready to expand research topic.",
+    expansion_questions: Array.isArray(parsed.expansion_questions)
+      ? parsed.expansion_questions
+      : Array.isArray(parsed.questions)
+      ? parsed.questions
+      : Array.isArray(parsed.expansionQuestions)
+      ? parsed.expansionQuestions
+      : [],
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -89,7 +115,8 @@ export async function POST(request: NextRequest) {
           },
         });
         const responseText = result.response.text();
-        return NextResponse.json(JSON.parse(responseText));
+        const normalized = normalizeExpansionData(responseText, question);
+        return NextResponse.json(normalized);
       } else if (action === "build") {
         const answersFormatted = Object.entries(answers as Record<string, string>)
           .map(([key, value]) => `- ${key}: ${value}`)
@@ -135,7 +162,8 @@ export async function POST(request: NextRequest) {
 
         const data = await response.json();
         const responseText = data.choices[0].message.content;
-        return NextResponse.json(JSON.parse(responseText));
+        const normalized = normalizeExpansionData(responseText, question);
+        return NextResponse.json(normalized);
       } else if (action === "build") {
         const answersFormatted = Object.entries(answers as Record<string, string>)
           .map(([key, value]) => `- ${key}: ${value}`)
