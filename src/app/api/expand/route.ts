@@ -71,74 +71,110 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, question, answers } = body;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "GEMINI_API_KEY not configured" },
-        { status: 500 }
-      );
-    }
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const isWorkingGeminiKey = geminiApiKey && geminiApiKey !== "AIzaSyDFIWhNUioUfQ1_T_061bLOafykTFXyfvw";
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    if (isWorkingGeminiKey) {
+      console.log("Using direct Google Gemini API...");
+      const genAI = new GoogleGenerativeAI(geminiApiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
-    if (action === "expand") {
-      // Step 1: Analyze the question and generate follow-up questions
-      const result = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `${SYSTEM_PROMPT}\n\nUser's research question: "${question}"`,
-              },
-            ],
+      if (action === "expand") {
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: `${SYSTEM_PROMPT}\n\nUser's research question: "${question}"` }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+            responseMimeType: "application/json",
           },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json",
-        },
-      });
-
-      const responseText = result.response.text();
-      const parsed = JSON.parse(responseText);
-
-      return NextResponse.json(parsed);
-    } else if (action === "build") {
-      // Step 2: Build the final prompt from question + answers
-      const answersFormatted = Object.entries(answers as Record<string, string>)
-        .map(([key, value]) => `- ${key}: ${value}`)
-        .join("\n");
-
-      const result = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `${PROMPT_BUILDER_SYSTEM}\n\nOriginal research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement prompt now.`,
-              },
-            ],
+        });
+        const responseText = result.response.text();
+        return NextResponse.json(JSON.parse(responseText));
+      } else if (action === "build") {
+        const answersFormatted = Object.entries(answers as Record<string, string>)
+          .map(([key, value]) => `- ${key}: ${value}`)
+          .join("\n");
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: `${PROMPT_BUILDER_SYSTEM}\n\nOriginal research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement prompt now.` }] }],
+          generationConfig: {
+            temperature: 0.6,
+            maxOutputTokens: 4096,
           },
-        ],
-        generationConfig: {
-          temperature: 0.6,
-          maxOutputTokens: 4096,
-        },
-      });
+        });
+        return NextResponse.json({ prompt: result.response.text() });
+      }
+    } else {
+      const openRouterKey = process.env.OPENROUTER_API_KEY;
+      if (!openRouterKey) {
+        throw new Error("OPENROUTER_API_KEY is not configured");
+      }
+      
+      if (action === "expand") {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openRouterKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: `User's research question: "${question}"` }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+            max_tokens: 2048,
+          }),
+        });
 
-      const prompt = result.response.text();
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
+        }
 
-      return NextResponse.json({ prompt });
+        const data = await response.json();
+        const responseText = data.choices[0].message.content;
+        return NextResponse.json(JSON.parse(responseText));
+      } else if (action === "build") {
+        const answersFormatted = Object.entries(answers as Record<string, string>)
+          .map(([key, value]) => `- ${key}: ${value}`)
+          .join("\n");
+
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openRouterKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: PROMPT_BUILDER_SYSTEM },
+              { role: "user", content: `Original research question: "${question}"\n\nUser's answers to follow-up questions:\n${answersFormatted}\n\nBuild the research engagement prompt now.` }
+            ],
+            temperature: 0.6,
+            max_tokens: 4096,
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
+        }
+
+        const data = await response.json();
+        const prompt = data.choices[0].message.content;
+        return NextResponse.json({ prompt });
+      }
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
-    console.error("API Error:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("API Error:", errMsg);
     return NextResponse.json(
-      { error: "Internal server error", details: String(error) },
+      { error: "Internal server error", details: errMsg },
       { status: 500 }
     );
   }

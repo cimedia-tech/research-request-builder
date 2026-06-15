@@ -119,6 +119,10 @@ async function saveToDispatchQueue(
   prompt: string,
   timestamp: string
 ): Promise<boolean> {
+  if (process.env.VERCEL) {
+    console.log("Running on Vercel, skipping local filesystem queue save");
+    return true;
+  }
   try {
     // Save to a known dispatch directory
     const dispatchDir = path.join(
