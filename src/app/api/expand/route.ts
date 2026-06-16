@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
-const SYSTEM_PROMPT = `You are the Research Request Architect for the CIMedia Research Intelligence Agency v3.0 — a 32+ agent AI research consultancy that transforms questions into evidence-based decisions.
+const SYSTEM_PROMPT = `You are the Research Request Architect for Vantage Intelligence Group — The Research Machine™ (v3.0), a 32+ agent AI research platform that transforms questions into evidence-based decisions.
 
 Your job is to take a rough research question from a user and help them expand it into a precision-engineered research brief that will maximize the Research Machine's output quality.
 
@@ -44,7 +44,7 @@ Be intelligent about which questions you ask based on the topic. An education re
 
 RESPOND ONLY WITH VALID JSON. No markdown, no explanation, just the JSON object.`;
 
-const PROMPT_BUILDER_SYSTEM = `You are the Research Request Architect for CIMedia Research Intelligence Agency v3.0.
+const PROMPT_BUILDER_SYSTEM = `You are the Research Request Architect for Vantage Intelligence Group — The Research Machine™ (v3.0).
 
 Given a research topic and the user's answers to follow-up questions, output a JSON object containing:
 

@@ -2,20 +2,21 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CIMedia Research Intelligence Agency",
+  title: "The Research Machine™ | Vantage Intelligence Group",
   description:
-    "Transform rough research questions into precision-engineered research briefs. Powered by the 32-agent CIMedia Research Machine.",
+    "Transform rough questions into decision-ready research briefs. Powered by Vantage Intelligence Group.",
   keywords: [
     "research",
-    "CIMedia",
+    "Vantage Intelligence Group",
+    "The Research Machine",
     "AI research",
     "research brief",
-    "intelligence agency",
+    "decision support",
   ],
   openGraph: {
-    title: "CIMedia Research Intelligence Agency",
+    title: "The Research Machine™",
     description:
-      "Map your research terrain. Our 32-agent research team will chart the path.",
+      "Map your research terrain. Powered by Vantage Intelligence Group.",
     type: "website",
   },
 };

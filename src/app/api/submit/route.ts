@@ -114,7 +114,7 @@ async function uploadToGoogleDrive(
     const jobFolderId = jobFolder.id;
 
     // 3. Upload Markdown Files
-    const boundary = "boundary_cimedia_rm";
+    const boundary = "boundary_vantage_rm";
 
     // File 1: 1_Research_Brief.md
     const f1Meta = { name: "1_Research_Brief.md", parents: [jobFolderId], mimeType: "text/markdown" };
@@ -272,7 +272,7 @@ ${question}
 ${truncatedPrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ Submitted via CIMedia Research Request Builder
+⚡ Submitted via Vantage Research Request Builder
 🔗 The Research Machine is standing by.`;
 
   try {
@@ -331,7 +331,7 @@ async function saveToDispatchQueue(
       originalQuestion: question,
       prompt,
       submittedAt: timestamp,
-      submittedBy: name ? `${name} <${email}>` : "CIMedia Research Request Builder",
+      submittedBy: name ? `${name} <${email}>` : "Vantage Research Request Builder",
       targetAgent: "research_machine",
       gdriveFolderLink: gdriveFolderLink || null,
     };

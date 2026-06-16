@@ -293,12 +293,12 @@ export default function ResearchRequestBuilder() {
   const [gdriveFolderLink, setGdriveFolderLink] = useState("");
 
   /* ── Manager Backdoor ────────────────────────────────────── */
-  // 1. URL param: ?access=CIMEDIA_ADMIN_2026
+  // 1. URL param: ?access=VANTAGE_ADMIN_2026
   // 2. Keyboard: Shift+Ctrl+M anywhere on the page
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const accessKey = params.get("access");
-    if (accessKey === "CIMEDIA_ADMIN_2026") {
+    if (accessKey === "VANTAGE_ADMIN_2026") {
       setIsManagerMode(true);
       // Clean the URL so the key isn't visible in screen shares
       const cleanUrl = window.location.pathname;
@@ -311,7 +311,7 @@ export default function ResearchRequestBuilder() {
         setIsManagerMode((prev) => {
           const next = !prev;
           // Show a subtle console message (not a toast — avoid leaking in demos)
-          console.log(`%c[CIMedia] Manager mode ${next ? "ON" : "OFF"}`, "color: #C1694F; font-weight: bold;");
+          console.log(`%c[Vantage] Manager mode ${next ? "ON" : "OFF"}`, "color: #C1694F; font-weight: bold;");
           return next;
         });
       }
@@ -593,7 +593,7 @@ export default function ResearchRequestBuilder() {
               <HeaderLogo />
             </div>
             <span className="header-title">
-              <strong>CIMedia</strong> Research Intelligence Agency
+              <strong>Vantage</strong> Intelligence Group
             </span>
           </div>
           <div className="header-status">
@@ -622,11 +622,16 @@ export default function ResearchRequestBuilder() {
             {currentStep === 1 && (
               <>
                 <h1 className="step-hero-text">
-                  Map your research terrain
+                  The Research Machine™
                 </h1>
+                <h3 style={{ fontSize: "var(--text-lg)", color: "var(--accent-counter)", marginBottom: "1rem", fontFamily: "Georgia, serif" }}>
+                  Intelligence Engineered for Decision Makers
+                </h3>
                 <p className="step-subtitle">
-                  Describe the territory you want explored. Our 32-agent research
-                  team will chart the path.
+                  Ask a question. Receive an executive-grade intelligence brief complete with BLUF findings, strategic analysis, actionable recommendations, and ROI-focused insights.
+                </p>
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
+                  Built by <strong>Vantage Intelligence Group</strong>.
                 </p>
 
                 <div className="input-group" style={{ marginBottom: "1.25rem" }}>
@@ -822,7 +827,7 @@ export default function ResearchRequestBuilder() {
               </h2>
               <p className="step-section-desc">
                 Your precision-engineered research brief is ready. Copy it
-                directly into the CIMedia Research Machine.
+                directly into the Research Machine™.
               </p>
 
               {/* Division + Completeness */}
@@ -952,7 +957,7 @@ export default function ResearchRequestBuilder() {
                     <div className="preview-markdown" style={{ fontSize: "0.9rem", color: "var(--text-secondary)", lineHeight: "1.6", whiteSpace: "pre-wrap", textAlign: "left", fontFamily: "var(--font-body)" }}>
                       {previewContent || `EXECUTIVE BRIEF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CIMedia Research Intelligence Agency v3.0
+Vantage Intelligence Group — The Research Machine™
 Topic: ${expansionData?.detected_topic || researchQuestion.slice(0, 60)}
 Division: ${expansionData?.detected_division || "Pending"}
 Classification: Research Engagement Brief
