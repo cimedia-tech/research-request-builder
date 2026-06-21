@@ -403,7 +403,30 @@ export default function ResearchRequestBuilder() {
 
   /* ── API: Expand question → follow-ups ────────────────────── */
   const handleExpand = useCallback(async () => {
-    if (!researchQuestion.trim()) return;
+    if (!researchQuestion.trim()) {
+      showToast("Please enter a research question.");
+      return;
+    }
+    if (!submitterName.trim()) {
+      showToast("Please enter your name.");
+      const nameInput = document.querySelector('input[placeholder="E.g., Jane Doe"]') as HTMLInputElement;
+      if (nameInput) nameInput.focus();
+      return;
+    }
+    if (!submitterEmail.trim()) {
+      showToast("Please enter your email.");
+      const emailInput = document.querySelector('input[placeholder="E.g., jane@example.com"]') as HTMLInputElement;
+      if (emailInput) emailInput.focus();
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(submitterEmail.trim())) {
+      showToast("Please enter a valid email address.");
+      const emailInput = document.querySelector('input[placeholder="E.g., jane@example.com"]') as HTMLInputElement;
+      if (emailInput) emailInput.focus();
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -424,10 +447,15 @@ export default function ResearchRequestBuilder() {
     } finally {
       setIsLoading(false);
     }
-  }, [researchQuestion, showToast]);
+  }, [researchQuestion, submitterName, submitterEmail, showToast]);
 
   /* ── API: Build final prompt ──────────────────────────────── */
   const handleBuildPrompt = useCallback(async () => {
+    if (!allAnswered) {
+      showToast("Please answer all follow-up questions first.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -461,7 +489,7 @@ export default function ResearchRequestBuilder() {
     } finally {
       setIsLoading(false);
     }
-  }, [answers, expansionData, researchQuestion, showToast]);
+  }, [allAnswered, answers, expansionData, researchQuestion, showToast]);
 
   /* ── Answer handler ───────────────────────────────────────── */
   const handleAnswer = useCallback((id: string, value: string) => {
@@ -718,7 +746,7 @@ export default function ResearchRequestBuilder() {
                   <button
                     className="btn-primary"
                     onClick={handleExpand}
-                    disabled={!researchQuestion.trim() || !submitterName.trim() || !submitterEmail.trim() || isLoading}
+                    disabled={isLoading}
                   >
                     {isLoading ? (
                       <>
@@ -794,7 +822,7 @@ export default function ResearchRequestBuilder() {
                     <button
                       className="btn-primary"
                       onClick={handleBuildPrompt}
-                      disabled={!allAnswered || isLoading}
+                      disabled={isLoading}
                     >
                       {isLoading ? (
                         <>
