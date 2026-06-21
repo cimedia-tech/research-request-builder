@@ -647,6 +647,12 @@ export default function ResearchRequestBuilder() {
   const [isLoadingManagerData, setIsLoadingManagerData] = useState(false);
   const [isApprovingId, setIsApprovingId] = useState("");
 
+  /* ── Toast ────────────────────────────────────────────────── */
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  }, []);
 
   /* ── Manager Backdoor ────────────────────────────────────── */
   // 1. URL param: ?access=VANTAGE_ADMIN_2026
@@ -659,6 +665,60 @@ export default function ResearchRequestBuilder() {
       // Clean the URL so the key isn't visible in screen shares
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, "", cleanUrl);
+    }
+
+    const emailParam = params.get("email");
+    const jobIdParam = params.get("jobId");
+    const payParam = params.get("pay");
+
+    if (emailParam) {
+      setSubmitterEmail(emailParam);
+      
+      if (jobIdParam) {
+        setIsLoading(true);
+        fetch(`/api/client-jobs?email=${encodeURIComponent(emailParam)}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data && data.jobs) {
+              const matchedJob = data.jobs.find((j: any) => j.jobId === jobIdParam);
+              if (matchedJob) {
+                const folderId = matchedJob.link ? matchedJob.link.split("/").pop() : "";
+                return fetch(`/api/client-jobs/load?jobFolderId=${folderId}`)
+                  .then(res => res.ok ? res.json() : null)
+                  .then(briefData => {
+                    if (briefData) {
+                      setFinalPrompt(briefData.prompt);
+                      setPreviewContent(briefData.preview);
+                      setJobId(matchedJob.jobId);
+                      setGdriveFolderLink(matchedJob.link);
+                      setResearchQuestion(matchedJob.topic);
+                      setCurrentStep(3);
+                      showToast(`✓ Loaded research job: ${matchedJob.jobId}`);
+                      
+                      // Auto-trigger payment if pay=true is set
+                      if (payParam === "true") {
+                        setTimeout(() => {
+                          const confirmed = window.confirm(
+                            "This will simulate a $297 payment for the Full Research Package.\n\nIn production, this triggers Stripe Checkout.\n\nProceed?"
+                          );
+                          if (confirmed) {
+                            setHasPaid(true);
+                            showToast("✓ Payment confirmed — Full report package unlocked!");
+                          }
+                        }, 500);
+                      }
+                    }
+                  });
+              }
+            }
+          })
+          .catch(err => {
+            console.error("Error loading job from URL:", err);
+          })
+          .finally(() => {
+            setIsLoading(false);
+          });
+      }
     }
 
     const handleKeydown = (e: KeyboardEvent) => {
@@ -675,19 +735,13 @@ export default function ResearchRequestBuilder() {
 
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, []);
+  }, [showToast]);
 
   /* ── Derived ──────────────────────────────────────────────── */
   const totalQuestions = Array.isArray(expansionData?.expansion_questions) ? expansionData.expansion_questions.length : 0;
   const answeredCount = Object.values(answers).filter((v) => v !== "").length;
   const allAnswered = totalQuestions > 0 && answeredCount === totalQuestions;
 
-  /* ── Toast ────────────────────────────────────────────────── */
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2500);
-  }, []);
   const fetchManagerData = useCallback(async () => {
     setIsLoadingManagerData(true);
     try {
@@ -763,6 +817,8 @@ export default function ResearchRequestBuilder() {
   const handleSelectPastJob = useCallback(async (job: any) => {
     setIsLoading(true);
     showToast("Retrieving selected brief...");
+    setSampleSent(false);
+    setIsSendingSample(false);
     try {
       const folderId = job.folderId || (job.link ? job.link.split("/").pop() : "") || (job.gdriveFolderLink ? job.gdriveFolderLink.split("/").pop() : "");
       const res = await fetch(`/api/client-jobs/load?jobFolderId=${folderId}`);
@@ -945,6 +1001,8 @@ export default function ResearchRequestBuilder() {
     setIsSubmitting(false);
     setGdriveFolderLink("");
     setPastJobs([]);
+    setSampleSent(false);
+    setIsSendingSample(false);
     // Note: isManagerMode persists across resets intentionally
   }, []);
 
@@ -952,6 +1010,8 @@ export default function ResearchRequestBuilder() {
   const [hasPaid, setHasPaid] = useState(false);
   const [jobId, setJobId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingSample, setIsSendingSample] = useState(false);
+  const [sampleSent, setSampleSent] = useState(false);
 
   /* ── Simulate payment (Stripe will replace this) ──────────── */
   const handlePayment = useCallback(async () => {
@@ -998,6 +1058,36 @@ export default function ResearchRequestBuilder() {
       setIsSubmitting(false);
     }
   }, [finalPrompt, expansionData, researchQuestion, submitterName, submitterEmail, answers, previewContent, isSubmitting, showToast]);
+
+  /* ── Deliver Sample Brief via Email ──────────────────────── */
+  const handleDeliverSample = useCallback(async () => {
+    if (!submitterEmail || !jobId || isSendingSample) return;
+    setIsSendingSample(true);
+    try {
+      const res = await fetch("/api/deliver-sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: submitterEmail,
+          name: submitterName || "Valued Client",
+          jobId: jobId,
+          topic: researchQuestion,
+          sampleContent: previewContent || "No preview content generated."
+        })
+      });
+      if (res.ok) {
+        setSampleSent(true);
+        showToast("✓ Sample report delivered to your email!");
+      } else {
+        throw new Error("Failed to deliver sample email");
+      }
+    } catch (err) {
+      console.error("Error delivering sample:", err);
+      showToast("Failed to deliver sample email. Please try again.");
+    } finally {
+      setIsSendingSample(false);
+    }
+  }, [submitterEmail, submitterName, jobId, researchQuestion, previewContent, isSendingSample, showToast]);
 
   /* ── Step label for sidebar ───────────────────────────────── */
   const stepLabels: Record<Step, string> = {
@@ -1387,17 +1477,27 @@ export default function ResearchRequestBuilder() {
                 {jobId ? (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
                     <span className="submit-job-id">Job {jobId}</span>
-                    {gdriveFolderLink && (
-                      <a
-                        href={gdriveFolderLink}
-                        target="_blank"
-                        rel="noreferrer"
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
+                      {gdriveFolderLink && (
+                        <a
+                          href={gdriveFolderLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary"
+                          style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", fontSize: "0.8rem" }}
+                        >
+                          📁 Open Google Drive Folder
+                        </a>
+                      )}
+                      <button
+                        onClick={handleDeliverSample}
+                        disabled={isSendingSample || sampleSent}
                         className="btn-secondary"
-                        style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", fontSize: "0.8rem" }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", fontSize: "0.8rem", cursor: "pointer", border: "1px solid var(--border)", background: "var(--bg-raised)", color: "var(--text-primary)", borderRadius: "4px" }}
                       >
-                        📁 Open Google Drive Folder
-                      </a>
-                    )}
+                        {isSendingSample ? "⏳ Delivering..." : sampleSent ? "✓ Sample Delivered!" : "📧 Email Sample Report"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <span className="submit-status">Sends brief directly to the 32-agent research team via Telegram</span>
