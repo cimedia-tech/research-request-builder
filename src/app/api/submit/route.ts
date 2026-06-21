@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { readDatabase, registerJobInDb, runAIImprovementLoop, JobRecord } from "../../../lib/driveDb";
+import { sendGmailAlert } from "../../../lib/gmail";
+
 
 /**
  * /api/submit — Submit a research request directly to the Research Machine
@@ -194,7 +197,11 @@ export async function POST(request: NextRequest) {
     const jobId = `RM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const timestamp = new Date().toISOString();
 
-    // 1. Create client subfolder in Google Drive and upload free assets
+    // 1. Run AI Improvement Loop to classify type, summary, and rubric
+    const db = await readDatabase();
+    const aiResult = await runAIImprovementLoop(question || "N/A", db);
+
+    // 2. Create client subfolder in Google Drive and upload free assets
     const gdriveFolderLink = await uploadToGoogleDrive(
       jobId,
       division || "Auto-detect",
@@ -207,20 +214,47 @@ export async function POST(request: NextRequest) {
       questions || []
     );
 
-    // 2. Send via Telegram
-    const telegramSent = await sendTelegram(jobId, division, question, prompt, name, email, gdriveFolderLink);
+    // 3. Register Job in the Google Drive JSON database with status pending_approval
+    const jobRecord: JobRecord = {
+      jobId,
+      timestamp,
+      requestorName: name || "Anonymous",
+      requestorEmail: email || "N/A",
+      originalQuestion: question || "N/A",
+      detectedDivision: division || "Auto-detect",
+      topic: question || "N/A",
+      briefPrompt: prompt,
+      briefPreview: preview || "",
+      status: "pending_approval",
+      gdriveFolderLink: gdriveFolderLink,
+      oneParagraphSummary: aiResult.summary,
+      researchType: aiResult.type,
+      artifacts: {
+        reportLink: "",
+        briefLink: "",
+        dataTablesLink: ""
+      }
+    };
+    await registerJobInDb(jobRecord, aiResult);
 
-    // 3. Save to dispatch queue (for local Research Machine pickup)
-    const dispatched = await saveToDispatchQueue(jobId, division, question, prompt, timestamp, name, email, gdriveFolderLink);
+    // 4. Send Gmail Alert to cimedia316@gmail.com
+    const cleanTopic = question || "N/A";
+    const shortTopic = cleanTopic.length > 50 ? cleanTopic.substring(0, 50) + "..." : cleanTopic;
+    const emailSubject = `[Research Brief] ${aiResult.type} - ${shortTopic}`;
+    await sendGmailAlert(emailSubject, prompt);
+
+    // 5. Send via Telegram (marked as pending approval)
+    const telegramSent = await sendTelegram(jobId, division, question, prompt, name, email, gdriveFolderLink);
 
     return NextResponse.json({
       success: true,
       jobId,
       timestamp,
       telegram: telegramSent,
-      dispatched,
+      dispatched: false,
       gdriveFolderLink,
-      message: `Research engagement ${jobId} submitted to the Research Machine.`,
+      status: "pending_approval",
+      message: `Research request ${jobId} submitted and pending manager approval.`,
     });
   } catch (error) {
     console.error("Submit error:", error);
@@ -257,6 +291,7 @@ async function sendTelegram(
   const message = `🔬 NEW RESEARCH ENGAGEMENT SUBMITTED
 
 📋 Job ID: ${jobId}
+🚦 Status: PENDING APPROVAL (HITL control active)
 🏢 Division: ${division || "Auto-detect"}
 👤 Submitter: ${name || "Anonymous"} (${email || "N/A"})
 📅 Submitted: ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })}
@@ -272,8 +307,8 @@ ${question}
 ${truncatedPrompt}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚡ Submitted via Vantage Research Request Builder
-🔗 The Research Machine is standing by.`;
+👉 Go to the Vantage Admin Dashboard to review and approve this job.
+⚡ Submitted via Vantage Research Request Builder`;
 
   try {
     const resp = await fetch(
@@ -301,7 +336,7 @@ ${truncatedPrompt}
   }
 }
 
-async function saveToDispatchQueue(
+export async function saveToDispatchQueue(
   jobId: string,
   division: string,
   question: string,

@@ -270,6 +270,356 @@ function QuestionCard({
   );
 }
 
+function ClientDashboard({
+  email,
+  jobs,
+  isLoading,
+  onBack,
+  onSelectJob
+}: {
+  email: string;
+  jobs: any[];
+  isLoading: boolean;
+  onBack: () => void;
+  onSelectJob: (job: any) => void;
+}) {
+  return (
+    <div className="dashboard-view" style={{ animation: "emerge var(--dur-emerge) var(--ease-emerge)", color: "var(--text-primary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", gap: "1rem", flexWrap: "wrap" }}>
+        <div>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--terracotta)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Client Intelligence Portal</span>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", color: "var(--text-primary)", marginTop: "0.25rem" }}>Research Expedition Catalog</h2>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginTop: "0.25rem" }}>Logged in as: <strong style={{ color: "var(--text-primary)" }}>{email}</strong></p>
+        </div>
+        <button className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.8rem" }} onClick={onBack}>
+          ← Back to Request Builder
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "200px", color: "var(--text-secondary)" }}>
+          <LoadingDots /> Loading your research portfolio...
+        </div>
+      ) : jobs.length === 0 ? (
+        <div style={{ padding: "3rem", border: "1px dashed var(--border)", borderRadius: "8px", textAlign: "center", color: "var(--text-secondary)" }}>
+          No research expeditions found for this email address yet.
+          <br />
+          <button className="btn-primary" style={{ marginTop: "1rem" }} onClick={onBack}>
+            Initiate First Research
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          {jobs.map((job) => {
+            const isCompleted = job.status === "completed";
+            const isApproved = job.status === "approved";
+            const statusColor = isCompleted ? "var(--success)" : isApproved ? "var(--teal-glow)" : "var(--warning)";
+            const statusText = isCompleted ? "✓ Completed" : isApproved ? "⚡ Gathering Evidence" : "🚦 Awaiting Approval";
+
+            return (
+              <div
+                key={job.jobId}
+                style={{
+                  padding: "1.5rem",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1rem",
+                  boxShadow: "var(--shadow-sm)"
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
+                  <div>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>
+                      ID: {job.jobId} · {new Date(job.createdTime).toLocaleDateString()}
+                    </span>
+                    <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)", marginTop: "0.25rem" }}>
+                      {job.topic}
+                    </h3>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: statusColor,
+                      border: `1px solid ${statusColor}`,
+                      padding: "0.25rem 0.6rem",
+                      borderRadius: "var(--radius-full)",
+                      background: "rgba(0,0,0,0.2)",
+                      whiteSpace: "nowrap"
+                    }}
+                  >
+                    {statusText}
+                  </span>
+                </div>
+
+                <div style={{ padding: "0.75rem", background: "var(--bg)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--terracotta)" }}>
+                  <span style={{ display: "block", fontSize: "0.7rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: "0.25rem" }}>
+                    Executive Catalog Summary
+                  </span>
+                  <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
+                    {job.oneParagraphSummary || "No summary available."}
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
+                    Type: <strong style={{ color: "var(--text-secondary)" }}>{job.researchType || "General Investigation"}</strong>
+                  </span>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: "0.4rem 0.8rem", fontSize: "0.75rem" }}
+                      onClick={() => onSelectJob(job)}
+                    >
+                      Inspect Brief
+                    </button>
+                    {job.link && (
+                      <a
+                        href={job.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-secondary"
+                        style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.8rem", fontSize: "0.75rem" }}
+                      >
+                        📁 Open Workspace
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManagerDashboard({
+  jobs,
+  researchTypes,
+  isLoading,
+  onBack,
+  onApprove,
+  onSelectJob,
+  isApprovingId
+}: {
+  jobs: any[];
+  researchTypes: any[];
+  isLoading: boolean;
+  onBack: () => void;
+  onApprove: (jobId: string) => void;
+  onSelectJob: (job: any) => void;
+  isApprovingId: string;
+}) {
+  const [activeTab, setActiveTab] = useState<"jobs" | "types">("jobs");
+
+  return (
+    <div className="dashboard-view" style={{ animation: "emerge var(--dur-emerge) var(--ease-emerge)", color: "var(--text-primary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", gap: "1rem", flexWrap: "wrap" }}>
+        <div>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--teal-glow)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>Director Operations Control</span>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-2xl)", color: "var(--text-primary)", marginTop: "0.25rem" }}>Research Machine Dashboard</h2>
+        </div>
+        <button className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.8rem" }} onClick={onBack}>
+          ← Back to Scoper
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: "1rem", borderBottom: "1px solid var(--border)", marginBottom: "1.5rem", paddingBottom: "0.5rem" }}>
+        <button
+          style={{
+            background: "none",
+            border: "none",
+            color: activeTab === "jobs" ? "var(--teal-glow)" : "var(--text-tertiary)",
+            borderBottom: activeTab === "jobs" ? "2px solid var(--teal-glow)" : "none",
+            padding: "0.5rem 1rem",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: "0.9rem"
+          }}
+          onClick={() => setActiveTab("jobs")}
+        >
+          Research Jobs Catalog ({jobs.length})
+        </button>
+        <button
+          style={{
+            background: "none",
+            border: "none",
+            color: activeTab === "types" ? "var(--teal-glow)" : "var(--text-tertiary)",
+            borderBottom: activeTab === "types" ? "2px solid var(--teal-glow)" : "none",
+            padding: "0.5rem 1rem",
+            cursor: "pointer",
+            fontWeight: 600,
+            fontSize: "0.9rem"
+          }}
+          onClick={() => setActiveTab("types")}
+        >
+          AI Research Types & Rubrics ({researchTypes.length})
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "200px", color: "var(--text-secondary)" }}>
+          <LoadingDots /> Loading director operations data...
+        </div>
+      ) : activeTab === "jobs" ? (
+        jobs.length === 0 ? (
+          <div style={{ padding: "3rem", border: "1px dashed var(--border)", borderRadius: "8px", textAlign: "center", color: "var(--text-secondary)" }}>
+            No research requests registered in database yet.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            {jobs.map((job) => {
+              const isCompleted = job.status === "completed";
+              const isApproved = job.status === "approved";
+              const isPending = job.status === "pending_approval";
+              const statusColor = isCompleted ? "var(--success)" : isApproved ? "var(--teal-glow)" : "var(--warning)";
+              const statusText = isCompleted ? "✓ Completed" : isApproved ? "⚡ Gathering Evidence" : "🚦 Pending Director Approval";
+
+              return (
+                <div
+                  key={job.jobId}
+                  style={{
+                    padding: "1.5rem",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-lg)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "1rem",
+                    boxShadow: "var(--shadow-sm)"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
+                    <div>
+                      <span style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)", fontFamily: "var(--font-mono)" }}>
+                        ID: {job.jobId} · {new Date(job.timestamp).toLocaleString()}
+                      </span>
+                      <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)", marginTop: "0.25rem" }}>
+                        {job.topic}
+                      </h3>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                        Requestor: <strong style={{ color: "var(--text-primary)" }}>{job.requestorName}</strong> ({job.requestorEmail})
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        color: statusColor,
+                        border: `1px solid ${statusColor}`,
+                        padding: "0.25rem 0.6rem",
+                        borderRadius: "var(--radius-full)",
+                        background: "rgba(0,0,0,0.2)",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {statusText}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1rem", margin: "0.5rem 0" }}>
+                    <div style={{ padding: "0.75rem", background: "var(--bg)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--terracotta)" }}>
+                      <span style={{ display: "block", fontSize: "0.7rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: "0.25rem" }}>
+                        AI Catalog Summary
+                      </span>
+                      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0 }}>
+                        {job.oneParagraphSummary || "No summary generated."}
+                      </p>
+                    </div>
+
+                    <div style={{ padding: "0.75rem", background: "var(--bg)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--teal-glow)" }}>
+                      <span style={{ display: "block", fontSize: "0.7rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: "0.25rem" }}>
+                        Vetting Rubric (Quality Control)
+                      </span>
+                      <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", lineHeight: "1.5", margin: 0, whiteSpace: "pre-line" }}>
+                        {job.rubric || "- Verify primary data sources\n- Review methodology"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
+                      Type: <strong style={{ color: "var(--text-secondary)" }}>{job.researchType || "General Investigation"}</strong>
+                    </span>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ padding: "0.4rem 0.8rem", fontSize: "0.75rem" }}
+                        onClick={() => onSelectJob(job)}
+                      >
+                        Inspect Brief
+                      </button>
+                      {job.gdriveFolderLink && (
+                        <a
+                          href={job.gdriveFolderLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary"
+                          style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.8rem", fontSize: "0.75rem" }}
+                        >
+                          📁 Open Workspace
+                        </a>
+                      )}
+                      {isPending && (
+                        <button
+                          className="btn-primary"
+                          style={{ padding: "0.4rem 1rem", fontSize: "0.75rem", background: "var(--success)", borderColor: "var(--success)" }}
+                          onClick={() => onApprove(job.jobId)}
+                          disabled={isApprovingId === job.jobId}
+                        >
+                          {isApprovingId === job.jobId ? <LoadingDots /> : "⚡ Approve & Dispatch"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          {researchTypes.map((type) => (
+            <div
+              key={type.name}
+              style={{
+                padding: "1.5rem",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-lg)",
+                boxShadow: "var(--shadow-sm)"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <h3 style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text-primary)" }}>{type.name}</h3>
+                <span style={{ fontSize: "0.75rem", background: "rgba(0,0,0,0.3)", padding: "0.2rem 0.6rem", borderRadius: "12px", border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
+                  {type.count || 0} request(s)
+                </span>
+              </div>
+              <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", marginBottom: "1rem" }}>{type.description}</p>
+              
+              <div style={{ padding: "0.75rem", background: "var(--bg)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--teal)" }}>
+                <span style={{ display: "block", fontSize: "0.7rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  Continuous Quality Rubric (Refined by AI)
+                </span>
+                <div style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)", whiteSpace: "pre-line", lineHeight: "1.5" }}>
+                  {type.rubric}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -291,6 +641,12 @@ export default function ResearchRequestBuilder() {
   const [pastJobs, setPastJobs] = useState<any[]>([]);
   const [isLoadingPastJobs, setIsLoadingPastJobs] = useState(false);
   const [gdriveFolderLink, setGdriveFolderLink] = useState("");
+  const [viewDashboard, setViewDashboard] = useState<"client" | "manager" | null>(null);
+  const [allManagerJobs, setAllManagerJobs] = useState<any[]>([]);
+  const [researchTypes, setResearchTypes] = useState<any[]>([]);
+  const [isLoadingManagerData, setIsLoadingManagerData] = useState(false);
+  const [isApprovingId, setIsApprovingId] = useState("");
+
 
   /* ── Manager Backdoor ────────────────────────────────────── */
   // 1. URL param: ?access=VANTAGE_ADMIN_2026
@@ -332,6 +688,50 @@ export default function ResearchRequestBuilder() {
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2500);
   }, []);
+  const fetchManagerData = useCallback(async () => {
+    setIsLoadingManagerData(true);
+    try {
+      const res = await fetch("/api/manager");
+      if (res.ok) {
+        const data = await res.json();
+        setAllManagerJobs(data.jobs || []);
+        setResearchTypes(data.researchTypes || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch manager data:", err);
+    } finally {
+      setIsLoadingManagerData(false);
+    }
+  }, []);
+
+  const handleApproveJob = useCallback(async (jobId: string) => {
+    setIsApprovingId(jobId);
+    showToast("Approving and dispatching job...");
+    try {
+      const res = await fetch("/api/manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId })
+      });
+      if (res.ok) {
+        showToast("Job approved & dispatched to the 32-agent team!");
+        fetchManagerData();
+      } else {
+        showToast("Failed to approve job.");
+      }
+    } catch (err) {
+      console.error("Approve error:", err);
+      showToast("Error approving job.");
+    } finally {
+      setIsApprovingId("");
+    }
+  }, [fetchManagerData, showToast]);
+
+  useEffect(() => {
+    if (isManagerMode) {
+      fetchManagerData();
+    }
+  }, [isManagerMode, fetchManagerData]);
 
   // Look up client history when email changes
   useEffect(() => {
@@ -362,16 +762,17 @@ export default function ResearchRequestBuilder() {
   // Load a selected past brief from Google Drive
   const handleSelectPastJob = useCallback(async (job: any) => {
     setIsLoading(true);
-    showToast("Retrieving selected brief from Google Drive...");
+    showToast("Retrieving selected brief...");
     try {
-      const res = await fetch(`/api/client-jobs/load?jobFolderId=${job.folderId}`);
+      const folderId = job.folderId || (job.link ? job.link.split("/").pop() : "") || (job.gdriveFolderLink ? job.gdriveFolderLink.split("/").pop() : "");
+      const res = await fetch(`/api/client-jobs/load?jobFolderId=${folderId}`);
       if (!res.ok) throw new Error("Failed to load brief data");
       const data = await res.json();
       
       setFinalPrompt(data.prompt);
       setPreviewContent(data.preview);
       setJobId(job.jobId);
-      setGdriveFolderLink(job.link);
+      setGdriveFolderLink(job.link || job.gdriveFolderLink);
       setResearchQuestion(job.topic);
       setHasPaid(false);
       setCurrentStep(3);
@@ -629,6 +1030,26 @@ export default function ResearchRequestBuilder() {
             <a href="/kenya-crusade/index.html" className="header-link">Kenya Crusade</a>
           </nav>
           <div className="header-status">
+            {isManagerMode && (
+              <button
+                onClick={() => setViewDashboard((prev) => (prev === "manager" ? null : "manager"))}
+                style={{
+                  marginRight: "1rem",
+                  padding: "0.25rem 0.75rem",
+                  fontSize: "0.75rem",
+                  borderRadius: "4px",
+                  background: "var(--teal)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--teal-glow)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  boxShadow: "var(--shadow-sm)",
+                  transition: "all 0.2s",
+                }}
+              >
+                {viewDashboard === "manager" ? "Close Ops Control" : "🛠️ Ops Control"}
+              </button>
+            )}
             <span className="status-dot" />
             <span>v3.0 — 32 agents online</span>
           </div>
@@ -646,7 +1067,27 @@ export default function ResearchRequestBuilder() {
 
         {/* ── Main Content ────────────────────────────────────── */}
         <main className="expedition-main">
-          {/* ──────── STEP 1: Research Question Input ──────── */}
+          {viewDashboard === "client" ? (
+            <ClientDashboard
+              email={submitterEmail}
+              jobs={pastJobs}
+              isLoading={isLoadingPastJobs}
+              onBack={() => setViewDashboard(null)}
+              onSelectJob={handleSelectPastJob}
+            />
+          ) : viewDashboard === "manager" ? (
+            <ManagerDashboard
+              jobs={allManagerJobs}
+              researchTypes={researchTypes}
+              isLoading={isLoadingManagerData}
+              onBack={() => setViewDashboard(null)}
+              onApprove={handleApproveJob}
+              onSelectJob={handleSelectPastJob}
+              isApprovingId={isApprovingId}
+            />
+          ) : (
+            <>
+              {/* ──────── STEP 1: Research Question Input ──────── */}
           <section
             className={`step-section ${currentStep > 1 ? "completed" : ""}`}
             style={{ display: currentStep >= 1 ? "block" : "none" }}
@@ -701,9 +1142,27 @@ export default function ResearchRequestBuilder() {
 
                 {pastJobs.length > 0 && (
                   <div className="past-jobs-container" style={{ margin: "1.5rem 0", padding: "1.25rem", border: "1px dashed var(--border-active)", borderRadius: "8px", background: "var(--bg-raised)" }}>
-                    <h3 style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", marginBottom: "0.5rem", fontWeight: 600 }}>
-                      📁 Existing Research Briefs Found
-                    </h3>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <h3 style={{ fontSize: "var(--text-sm)", color: "var(--text-primary)", margin: 0, fontWeight: 600 }}>
+                        📁 Existing Research Briefs Found
+                      </h3>
+                      <button
+                        onClick={() => setViewDashboard("client")}
+                        style={{
+                          background: "var(--teal)",
+                          color: "var(--text-primary)",
+                          border: "1px solid var(--teal-glow)",
+                          fontSize: "0.7rem",
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                        type="button"
+                      >
+                        📂 Open Dashboard Catalog
+                      </button>
+                    </div>
                     <p style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginBottom: "1rem", lineHeight: "1.4" }}>
                       We found {pastJobs.length} existing research brief(s) under this email. Select one to proceed to checkout/preview, or continue below to build a new request.
                     </p>
@@ -1086,6 +1545,8 @@ KEY FINDINGS PREVIEW
                 )}
               </div>
             </section>
+          )}
+            </>
           )}
         </main>
 
