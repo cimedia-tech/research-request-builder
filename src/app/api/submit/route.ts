@@ -44,6 +44,79 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+function simpleMdToHtml(md: string): string {
+  // Convert basic Markdown to HTML
+  let html = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Headers
+  html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+  html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+  html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+  html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  // Underline or italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+
+  // Lists
+  html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+
+  // Parse paragraphs and wrap list items
+  const lines = html.split('\n');
+  let inList = false;
+  const processedLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('<li>')) {
+      if (!inList) {
+        processedLines.push('<ul>');
+        inList = true;
+      }
+      processedLines.push(line);
+    } else {
+      if (inList) {
+        processedLines.push('</ul>');
+        inList = false;
+      }
+      if (trimmed && !trimmed.startsWith('<h') && !trimmed.startsWith('<hr')) {
+        processedLines.push(`<p>${line}</p>`);
+      } else {
+        processedLines.push(line);
+      }
+    }
+  }
+  if (inList) {
+    processedLines.push('</ul>');
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+body { font-family: 'Georgia', serif; font-size: 11pt; line-height: 1.6; color: #1a1a1a; }
+h1 { font-size: 20pt; color: #0a0e27; border-bottom: 2px solid #d4a843; padding-bottom: 5px; }
+h2 { font-size: 15pt; color: #0a0e27; margin-top: 20px; }
+h3 { font-size: 12pt; color: #0a0e27; }
+p { margin: 10px 0; }
+ul { padding-left: 20px; }
+li { margin: 5px 0; }
+strong { color: #0a0e27; }
+</style>
+</head>
+<body>
+${processedLines.join('\n')}
+</body>
+</html>`;
+}
+
 async function uploadToGoogleDrive(
   jobId: string,
   division: string,
@@ -116,28 +189,30 @@ async function uploadToGoogleDrive(
     const jobFolder = await jfRes.json();
     const jobFolderId = jobFolder.id;
 
-    // 3. Upload Markdown Files
+    // 3. Upload Styled HTML Files converted to Google Docs
     const boundary = "boundary_vantage_rm";
 
-    // File 1: 1_Research_Brief.md
-    const f1Meta = { name: "1_Research_Brief.md", parents: [jobFolderId], mimeType: "text/markdown" };
-    const f1Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f1Meta)}\r\n--${boundary}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${prompt}\r\n--${boundary}--`;
+    // File 1: 1 — Research Brief
+    const html1 = simpleMdToHtml(prompt);
+    const f1Meta = { name: "1 — Research Brief", parents: [jobFolderId], mimeType: "application/vnd.google-apps.document" };
+    const f1Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f1Meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html1}\r\n--${boundary}--`;
     await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
       body: f1Body,
     });
 
-    // File 2: 2_Strategic_Preview.md
-    const f2Meta = { name: "2_Strategic_Preview.md", parents: [jobFolderId], mimeType: "text/markdown" };
-    const f2Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f2Meta)}\r\n--${boundary}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${preview || "No preview generated"}\r\n--${boundary}--`;
+    // File 2: 2 — Strategic Preview
+    const html2 = simpleMdToHtml(preview || "No preview generated");
+    const f2Meta = { name: "2 — Strategic Preview", parents: [jobFolderId], mimeType: "application/vnd.google-apps.document" };
+    const f2Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f2Meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html2}\r\n--${boundary}--`;
     await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
       body: f2Body,
     });
 
-    // File 3: 3_Intake_Survey.md
+    // File 3: 3 — Intake Survey
     let surveyContent = `# Research Request Intake Survey: ${jobId}\n\n`;
     surveyContent += `**Submitter Name:** ${cleanName}\n`;
     surveyContent += `**Submitter Email:** ${cleanEmail}\n`;
@@ -154,8 +229,9 @@ async function uploadToGoogleDrive(
       surveyContent += `No follow-up questions answered.\n`;
     }
 
-    const f3Meta = { name: "3_Intake_Survey.md", parents: [jobFolderId], mimeType: "text/markdown" };
-    const f3Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f3Meta)}\r\n--${boundary}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${surveyContent}\r\n--${boundary}--`;
+    const html3 = simpleMdToHtml(surveyContent);
+    const f3Meta = { name: "3 — Intake Survey", parents: [jobFolderId], mimeType: "application/vnd.google-apps.document" };
+    const f3Body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(f3Meta)}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${html3}\r\n--${boundary}--`;
     await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
