@@ -596,6 +596,10 @@ export default function ResearchRequestBuilder() {
               <strong>Vantage</strong> Intelligence Group
             </span>
           </div>
+          <nav className="header-nav">
+            <a href="/taskflow/index.html" className="header-link">TaskFlow</a>
+            <a href="/kenya-crusade/index.html" className="header-link">Kenya Crusade</a>
+          </nav>
           <div className="header-status">
             <span className="status-dot" />
             <span>v3.0 — 32 agents online</span>

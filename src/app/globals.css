@@ -268,6 +268,47 @@ h1, h2, h3, h4 {
   animation: breathe-glow var(--dur-breathe) var(--ease-breathe) infinite;
 }
 
+.header-nav {
+  display: flex;
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.header-link {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  transition: color var(--dur-settle) var(--ease-settle), text-shadow var(--dur-settle) var(--ease-settle);
+  position: relative;
+  padding: var(--space-2) 0;
+}
+
+.header-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background-color: var(--terracotta);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform var(--dur-settle) var(--ease-settle);
+}
+
+.header-link:hover {
+  color: var(--text-primary);
+  text-shadow: 0 0 8px rgba(193, 105, 79, 0.4);
+}
+
+.header-link:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
 .expedition-main {
   grid-area: main;
   padding: var(--space-12) var(--space-8) var(--space-20);
